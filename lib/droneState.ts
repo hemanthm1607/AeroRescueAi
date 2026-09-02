@@ -1,121 +1,92 @@
 /**
- * Drone state backed by Upstash Redis REST API.
+ * Drone state — in-process store using globalThis.
  *
- * Uses plain fetch — no SDK required, zero extra dependencies.
- * Works correctly on Vercel serverless because state lives in Redis,
- * not in the Node process memory.
+ * WHY globalThis AND NOT module-level variables?
+ * Next.js hot-reloading re-evaluates modules in development, clearing
+ * module-level variables. globalThis survives module re-evaluation within
+ * the same Node process, so it acts as a true singleton per process.
  *
- * Required environment variables (server-side only):
- *   UPSTASH_REDIS_REST_URL   — e.g. https://us1-xxx.upstash.io
- *   UPSTASH_REDIS_REST_TOKEN — your Upstash REST token
+ * VERCEL BEHAVIOUR:
+ * On Vercel, each serverless function invocation may run on a different
+ * compute instance. However, Vercel keeps warm instances alive and tends
+ * to route rapid sequential requests (phone heartbeat + laptop poll) to the
+ * same warm instance in practice.
  *
- * Keys used in Redis:
- *   aerorescue:heartbeat   — Unix ms timestamp of last phone heartbeat (string)
- *   aerorescue:frame       — JSON: { imageBase64, mimeType, postedAt }
+ * For this single-session, real-time drone use case this is acceptable:
+ * - If a cold instance handles a status poll it simply returns disconnected
+ *   and the laptop retries in 2 s when the warm instance answers again.
+ * - Frames are re-sent on every capture, so a missed delivery self-corrects.
+ *
+ * NO external services, NO environment variables, NO new dependencies.
  */
 
-const KEY_HEARTBEAT = "aerorescue:heartbeat";
-const KEY_FRAME = "aerorescue:frame";
+/** Shape of the global drone store */
+interface DroneStore {
+  /** Unix ms timestamp of last heartbeat from the phone, or null */
+  lastHeartbeat: number | null;
+  /** Latest frame waiting to be picked up by the laptop */
+  pendingFrame: { imageBase64: string; mimeType: string; postedAt: number } | null;
+}
 
-/** Phone considered alive if heartbeat within last 10 s */
+/** Extend globalThis so TypeScript is happy */
+declare global {
+  // eslint-disable-next-line no-var
+  var __droneStore: DroneStore | undefined;
+}
+
+function getStore(): DroneStore {
+  if (!globalThis.__droneStore) {
+    globalThis.__droneStore = { lastHeartbeat: null, pendingFrame: null };
+  }
+  return globalThis.__droneStore;
+}
+
+/** Phone considered alive if heartbeat arrived within last 10 s */
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 
-// ── Redis REST helper ───────────────────────────────────────────────────────
+// ── Public API — all synchronous (no async needed, no network calls) ──────
 
-function getRedisConfig(): { url: string; token: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return { url, token };
+export function recordHeartbeat(): void {
+  const store = getStore();
+  const now = Date.now();
+  store.lastHeartbeat = now;
+  console.log(`[droneState] Heartbeat recorded — ${new Date(now).toISOString()}`);
 }
 
-async function redisGet(key: string): Promise<string | null> {
-  const cfg = getRedisConfig();
-  if (!cfg) return null;
-  try {
-    const res = await fetch(`${cfg.url}/get/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${cfg.token}` },
-      // No caching — always read fresh state
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json.result ?? null;
-  } catch {
+export function isDroneConnected(): boolean {
+  const store = getStore();
+  if (store.lastHeartbeat === null) {
+    console.log("[droneState] isDroneConnected: no heartbeat → disconnected");
+    return false;
+  }
+  const age = Date.now() - store.lastHeartbeat;
+  const connected = age < HEARTBEAT_TIMEOUT_MS;
+  console.log(`[droneState] isDroneConnected: heartbeat ${age}ms ago → ${connected ? "CONNECTED" : "DISCONNECTED"}`);
+  return connected;
+}
+
+export function postFrame(imageBase64: string, mimeType: string): void {
+  const store = getStore();
+  const now = Date.now();
+  store.lastHeartbeat = now; // Posting a frame also counts as a heartbeat
+  store.pendingFrame = { imageBase64, mimeType, postedAt: now };
+  console.log(`[droneState] Frame stored — mimeType=${mimeType} base64Length=${imageBase64.length}`);
+}
+
+/** Consume and clear the pending frame (deliver once to the laptop). */
+export function consumeFrame(): { imageBase64: string; mimeType: string } | null {
+  const store = getStore();
+  const frame = store.pendingFrame;
+  if (!frame) {
+    console.log("[droneState] consumeFrame: no pending frame");
     return null;
   }
+  store.pendingFrame = null;
+  console.log(`[droneState] consumeFrame: delivered — mimeType=${frame.mimeType} base64Length=${frame.imageBase64.length}`);
+  return { imageBase64: frame.imageBase64, mimeType: frame.mimeType };
 }
 
-async function redisSet(key: string, value: string, exSeconds?: number): Promise<void> {
-  const cfg = getRedisConfig();
-  if (!cfg) return;
-  try {
-    // Use EX (expire) so stale frames auto-clean after 60 s
-    const url = exSeconds
-      ? `${cfg.url}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/EX/${exSeconds}`
-      : `${cfg.url}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}`;
-    await fetch(url, {
-      method: "GET", // Upstash REST supports GET for set commands
-      headers: { Authorization: `Bearer ${cfg.token}` },
-    });
-  } catch {
-    // swallow — best-effort
-  }
-}
-
-async function redisDel(key: string): Promise<void> {
-  const cfg = getRedisConfig();
-  if (!cfg) return;
-  try {
-    await fetch(`${cfg.url}/del/${encodeURIComponent(key)}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${cfg.token}` },
-    });
-  } catch {
-    // swallow
-  }
-}
-
-// ── Public API (same interface as before) ──────────────────────────────────
-
-export async function recordHeartbeat(): Promise<void> {
-  await redisSet(KEY_HEARTBEAT, String(Date.now()), 30);
-}
-
-export async function isDroneConnected(): Promise<boolean> {
-  const val = await redisGet(KEY_HEARTBEAT);
-  if (!val) return false;
-  return Date.now() - Number(val) < HEARTBEAT_TIMEOUT_MS;
-}
-
-export async function postFrame(imageBase64: string, mimeType: string): Promise<void> {
-  const payload = JSON.stringify({ imageBase64, mimeType, postedAt: Date.now() });
-  // Expire the frame after 60 s so stale frames never block the laptop
-  await Promise.all([
-    redisSet(KEY_FRAME, payload, 60),
-    redisSet(KEY_HEARTBEAT, String(Date.now()), 30),
-  ]);
-}
-
-export async function consumeFrame(): Promise<{ imageBase64: string; mimeType: string } | null> {
-  const val = await redisGet(KEY_FRAME);
-  if (!val) return null;
-  // Delete immediately so the same frame isn't consumed twice
-  await redisDel(KEY_FRAME);
-  try {
-    const parsed = JSON.parse(val) as { imageBase64: string; mimeType: string };
-    return { imageBase64: parsed.imageBase64, mimeType: parsed.mimeType };
-  } catch {
-    return null;
-  }
-}
-
-export async function peekFrame(): Promise<{ imageBase64: string; mimeType: string; postedAt: number } | null> {
-  const val = await redisGet(KEY_FRAME);
-  if (!val) return null;
-  try {
-    return JSON.parse(val) as { imageBase64: string; mimeType: string; postedAt: number };
-  } catch {
-    return null;
-  }
+/** Peek at the pending frame without consuming it. */
+export function peekFrame(): { imageBase64: string; mimeType: string; postedAt: number } | null {
+  return getStore().pendingFrame;
 }

@@ -2,46 +2,97 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Cpu, Wifi, WifiOff, Camera } from "lucide-react";
+import { Realtime } from "ably";
+import type { Message } from "ably";
 import { cn } from "@/lib/utils";
+import type { AnalysisResult } from "@/types";
+import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT } from "@/lib/ablyConfig";
+
+interface DroneAnalysisMessage {
+  result: AnalysisResult;
+  previewDataUrl: string;
+  capturedAt: string;
+}
 
 interface DroneStatusWidgetProps {
-  onFrameReceived: (base64: string, mimeType: string) => void;
+  /** Called when the phone has finished analysis and sent results */
+  onResultReceived: (result: AnalysisResult, previewDataUrl: string, capturedAt: string) => void;
   isAnalyzing: boolean;
 }
 
-export default function DroneStatusWidget({ onFrameReceived, isAnalyzing }: DroneStatusWidgetProps) {
+export default function DroneStatusWidget({ onResultReceived, isAnalyzing }: DroneStatusWidgetProps) {
   const [connected, setConnected] = useState(false);
   const [lastFrameAt, setLastFrameAt] = useState<string | null>(null);
+  const [ablyReady, setAblyReady] = useState(false);
+  const onResultRef = useRef(onResultReceived);
   const isAnalyzingRef = useRef(isAnalyzing);
 
+  useEffect(() => { onResultRef.current = onResultReceived; }, [onResultReceived]);
   useEffect(() => { isAnalyzingRef.current = isAnalyzing; }, [isAnalyzing]);
 
   useEffect(() => {
-    let active = true;
-
-    async function poll() {
-      if (!active) return;
-      try {
-        const res = await fetch("/api/drone/status?consume=1");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!active) return;
-
-        setConnected(data.connected ?? false);
-
-        if (data.pendingFrame && !isAnalyzingRef.current) {
-          setLastFrameAt(new Date().toLocaleTimeString());
-          onFrameReceived(data.pendingFrame.imageBase64, data.pendingFrame.mimeType);
-        }
-      } catch {
-        // network glitch — wait for next poll
-      }
+    const key = process.env.NEXT_PUBLIC_ABLY_KEY;
+    if (!key) {
+      console.error("[DroneStatusWidget] NEXT_PUBLIC_ABLY_KEY is not set");
+      return;
     }
 
-    poll();
-    const id = setInterval(poll, 2_000);
-    return () => { active = false; clearInterval(id); };
-  }, [onFrameReceived]);
+    const ably = new Realtime({ key, autoConnect: true });
+
+    ably.connection.on("connected", () => {
+      console.log("[DroneStatusWidget] Ably connected");
+      setAblyReady(true);
+    });
+
+    ably.connection.on("disconnected", () => {
+      console.log("[DroneStatusWidget] Ably disconnected");
+      setAblyReady(false);
+      setConnected(false);
+    });
+
+    const ch = ably.channels.get(DRONE_CHANNEL);
+
+    // Listen for heartbeats from the phone
+    const heartbeatHandler = (msg: Message) => {
+      const online = (msg.data as { online?: boolean })?.online ?? true;
+      console.log(`[DroneStatusWidget] Heartbeat received — online=${online}`);
+      setConnected(online);
+    };
+
+    // Listen for analysis results from the phone
+    const analysisHandler = (msg: Message) => {
+      const payload = msg.data as DroneAnalysisMessage;
+      if (!payload?.result) return;
+      console.log("[DroneStatusWidget] Analysis result received from phone");
+      setConnected(true);
+      setLastFrameAt(new Date().toLocaleTimeString());
+      // Always deliver the result regardless of isAnalyzing —
+      // the laptop may have started its own analysis via upload; we still
+      // want to surface the drone result.
+      onResultRef.current(payload.result, payload.previewDataUrl, payload.capturedAt);
+    };
+
+    ch.subscribe(EVENT_HEARTBEAT, heartbeatHandler);
+    ch.subscribe(EVENT_ANALYSIS, analysisHandler);
+
+    // Mark phone as disconnected if no heartbeat for 15 s
+    let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+    const resetTimer = () => {
+      if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      heartbeatTimer = setTimeout(() => {
+        setConnected(false);
+        console.log("[DroneStatusWidget] Heartbeat timeout — marking drone disconnected");
+      }, 15_000);
+    };
+
+    ch.subscribe(EVENT_HEARTBEAT, () => resetTimer());
+
+    return () => {
+      if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      ch.unsubscribe();
+      ably.close();
+    };
+  }, []);
 
   return (
     <div className={cn(
@@ -63,7 +114,9 @@ export default function DroneStatusWidget({ onFrameReceived, isAnalyzing }: Dron
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-bold text-slate-100 leading-none">Drone Connection</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Phone camera → Control Station</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {ablyReady ? "Ably live — phone camera → Control Station" : "Connecting to Ably…"}
+          </p>
         </div>
         {/* Status pill */}
         <div className={cn(
@@ -99,15 +152,15 @@ export default function DroneStatusWidget({ onFrameReceived, isAnalyzing }: Dron
             </div>
             {lastFrameAt && (
               <p className="text-xs text-slate-500">
-                Last frame received at{" "}
+                Last result received at{" "}
                 <span className="text-slate-300 font-mono">{lastFrameAt}</span>
-                {isAnalyzing ? " — analysing…" : " — analysis complete"}
+                {isAnalyzing ? " — processing…" : " — displayed below"}
               </p>
             )}
             {isAnalyzing && (
               <div className="flex items-center gap-2 mt-1">
                 <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
-                <span className="text-xs text-blue-300 font-medium">AI analysis running…</span>
+                <span className="text-xs text-blue-300 font-medium">Updating dashboard…</span>
               </div>
             )}
           </div>

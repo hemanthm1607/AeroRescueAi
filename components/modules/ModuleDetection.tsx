@@ -24,7 +24,7 @@ import ErrorState from "@/components/ErrorState";
 import HazardCard from "@/components/HazardCard";
 import RescuePriority from "@/components/RescuePriority";
 import { SeverityDot } from "@/components/ui/Badge";
-import { useState, useCallback } from "react";
+import { useState } from "react";
 
 interface ModuleDetectionProps {
   isAnalyzing: boolean;
@@ -36,7 +36,8 @@ interface ModuleDetectionProps {
   } | null;
   analysisError: { type: ErrorType; message: string } | null;
   onUploadAnalyze: (b64: string, mime: string, preview: string) => void;
-  onDroneAnalyze: (b64: string, mime: string, preview: string) => void;
+  /** Called when the drone phone delivers a pre-analyzed result via Ably */
+  onDroneResult: (result: AnalysisResult, previewDataUrl: string, capturedAt: string) => void;
   onClearError: () => void;
 }
 
@@ -45,17 +46,10 @@ export default function ModuleDetection({
   currentAnalysis,
   analysisError,
   onUploadAnalyze,
-  onDroneAnalyze,
+  onDroneResult,
   onClearError,
 }: ModuleDetectionProps) {
   const [hazardsOpen, setHazardsOpen] = useState(true);
-
-  // When DroneStatusWidget receives a frame from the phone, synthesize a
-  // previewUrl from the base64 data and call the existing analyze handler.
-  const handleDroneFrame = useCallback((base64: string, mimeType: string) => {
-    const previewDataUrl = `data:${mimeType};base64,${base64}`;
-    onDroneAnalyze(base64, mimeType, previewDataUrl);
-  }, [onDroneAnalyze]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,9 +87,9 @@ export default function ModuleDetection({
           </div>
         </div>
 
-        {/* CARD 2 — Drone Connection Status (laptop receives frames from phone) */}
+        {/* CARD 2 — Drone Connection Status (receives analyzed results from phone via Ably) */}
         <DroneStatusWidget
-          onFrameReceived={handleDroneFrame}
+          onResultReceived={onDroneResult}
           isAnalyzing={isAnalyzing}
         />
       </div>

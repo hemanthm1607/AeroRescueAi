@@ -39,7 +39,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
   const criticalCount = history.filter((e) => e.result.rescuePriority === "CRITICAL").length;
 
-  // ─── AI Analysis (unchanged from original) ─────────────────────────────────
+  // ─── AI Analysis for uploaded images ──────────────────────────────────────
   const handleAnalyze = useCallback(
     async (base64: string, mimeType: string, previewUrl: string, mode: InputMode) => {
       setIsAnalyzing(true);
@@ -58,9 +58,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         if (!res.ok || !data.success) {
           let errorType: ErrorType = "api";
           if (res.status === 503) {
-            // 503 from our route means either "API key not configured" or network issue
-            // If there's a specific error message about configuration, keep "api" type
-            // so the ServerCrash icon shows — not "network" (WifiOff)
             const isConfigError = typeof data.error === "string" &&
               (data.error.includes("configured") || data.error.includes("API key"));
             errorType = isConfigError ? "api" : "network";
@@ -86,7 +83,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         addHistoryEntry(entry);
         setHistory(getHistory());
 
-        // Scroll to results
         setTimeout(() => {
           document.getElementById("detection-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
         }, 150);
@@ -99,6 +95,34 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     },
     []
   );
+
+  // ─── Drone result arrives pre-analyzed from the phone via Ably ────────────
+  const handleDroneResult = useCallback((
+    result: AnalysisResult,
+    previewDataUrl: string,
+    capturedAt: string,
+  ) => {
+    const timestamp = new Date(capturedAt).toISOString();
+    const formatted = formatTimestamp(timestamp);
+    setCurrentAnalysis({ result, previewUrl: previewDataUrl, inputMode: "drone", timestamp: formatted });
+    setAnalysisError(null);
+
+    const entry: AnalysisHistoryEntry = {
+      id: generateId(),
+      timestamp,
+      imageThumbnail: previewDataUrl,
+      result,
+      inputMode: "drone",
+    };
+    addHistoryEntry(entry);
+    setHistory(getHistory());
+
+    // Switch to detection module and scroll to results
+    setActiveModule("detection");
+    setTimeout(() => {
+      document.getElementById("detection-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#060b14]">
@@ -128,7 +152,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 currentAnalysis={currentAnalysis}
                 analysisError={analysisError}
                 onUploadAnalyze={(b64, mime, preview) => handleAnalyze(b64, mime, preview, "upload")}
-                onDroneAnalyze={(b64, mime, preview) => handleAnalyze(b64, mime, preview, "drone")}
+                onDroneResult={handleDroneResult}
                 onClearError={() => setAnalysisError(null)}
               />
             )}
