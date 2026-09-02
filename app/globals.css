@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased;
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-600;
+  }
+
+  /* Focus visible ring */
+  :focus-visible {
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-900;
+  }
+}
+
+@layer utilities {
+  /* Entrance animation */
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-in {
+    animation: fade-in-up 0.4s ease-out both;
+  }
+
+  .fade-in {
+    animation: fade-in-up 0.4s ease-out both;
+  }
+
+  .slide-in-from-bottom-4 {
+    animation: fade-in-up 0.4s ease-out both;
+  }
+
+  /* Loading bar sweep */
+  @keyframes progress {
+    0% {
+      width: 0%;
+      margin-left: 0;
+    }
+    50% {
+      width: 70%;
+      margin-left: 15%;
+    }
+    100% {
+      width: 0%;
+      margin-left: 100%;
+    }
+  }
+}
