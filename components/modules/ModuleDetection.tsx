@@ -2,7 +2,6 @@
 
 import {
   ScanSearch,
-  Users,
   Droplets,
   ShieldAlert,
   TriangleAlert,
@@ -11,7 +10,6 @@ import {
   ChevronUp,
   Activity,
   ImageUp,
-  Siren,
   AlertCircle,
 } from "lucide-react";
 import type { AnalysisResult, InputMode } from "@/types";
@@ -21,8 +19,6 @@ import ImageUploader from "@/components/ImageUploader";
 import DroneStatusWidget from "@/components/DroneStatusWidget";
 import LoadingState from "@/components/LoadingState";
 import ErrorState from "@/components/ErrorState";
-import HazardCard from "@/components/HazardCard";
-import RescuePriority from "@/components/RescuePriority";
 import { SeverityDot } from "@/components/ui/Badge";
 import { useState } from "react";
 
@@ -163,93 +159,117 @@ function rescueTeamsRequired(people: number): number {
 function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, onToggleHazards }: ResultCardsProps) {
   const teams = rescueTeamsRequired(result.peopleDetected);
 
+  // Helper to truncate text to specified lines
+  const truncateText = (text: string, lines: number) => {
+    const lineArray = text.split('\n');
+    if (lineArray.length > lines) {
+      return lineArray.slice(0, lines).join('\n') + '...';
+    }
+    return text;
+  };
+
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Row 1 — scene preview + 3 stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-        {/* Scene preview */}
-        <div className="rounded-xl border border-slate-700/50 bg-slate-900/50 overflow-hidden sm:col-span-2 lg:col-span-1">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={previewUrl} alt="Analysed scene" className="w-full h-40 object-cover" />
-          <div className="px-3 py-2 border-t border-slate-700/40">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-              {inputMode === "drone" ? "Drone frame" : "Uploaded image"} · {timestamp}
-            </p>
-          </div>
-        </div>
-
+      {/* ── TOP SUMMARY CARDS ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* People Detected */}
-        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-blue-400 shrink-0" />
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">People Detected</span>
-          </div>
-          <p className="text-5xl font-black text-blue-300 leading-none">{result.peopleDetected}</p>
-          <p className="text-xs text-slate-400">{result.peopleDetected === 1 ? "person" : "people"} in scene</p>
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 flex flex-col items-center gap-1">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">People Detected</p>
+          <p className="text-4xl font-black text-blue-300">{result.peopleDetected}</p>
+          <p className="text-xs text-slate-500">{result.peopleDetected === 1 ? "person" : "people"} in scene</p>
         </div>
 
-        {/* Rescue Teams Required */}
-        <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <Siren className="w-4 h-4 text-orange-400 shrink-0" />
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Rescue Teams</span>
-          </div>
-          <p className="text-5xl font-black text-orange-300 leading-none">{teams}</p>
-          <p className="text-xs text-slate-400">{teams === 1 ? "team" : "teams"} required</p>
+        {/* Rescue Teams */}
+        <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-4 flex flex-col items-center gap-1">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Rescue Teams</p>
+          <p className="text-4xl font-black text-orange-300">{teams}</p>
+          <p className="text-xs text-slate-500">{teams === 1 ? "team" : "teams"} required</p>
         </div>
 
         {/* Disaster Type */}
-        <div className="rounded-xl border border-slate-600/40 bg-slate-800/50 p-4 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-slate-400 shrink-0" />
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Disaster Type</span>
-          </div>
-          <p className="text-xl font-black text-slate-100 leading-tight">{result.disasterType}</p>
-          <p className="text-xs text-slate-500">identified from image</p>
+        <div className="rounded-lg border border-slate-600/40 bg-slate-800/50 p-4 flex flex-col items-center gap-1">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Disaster Type</p>
+          <p className="text-2xl font-black text-slate-100">{result.disasterType}</p>
+          <p className="text-xs text-slate-500">from image</p>
         </div>
       </div>
 
-      {/* Row 2 — Flood Severity + Water Condition */}
-      <div className="rounded-xl border border-slate-700/40 bg-slate-900/50 p-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* ── SCENE PREVIEW ── */}
+      <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 overflow-hidden">
+        <img src={previewUrl} alt="Analysed scene" className="w-full h-32 object-cover" />
+        <div className="px-3 py-2 border-t border-slate-700/40 bg-slate-950/50">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+            {inputMode === "drone" ? "Drone frame" : "Uploaded image"} · {timestamp}
+          </p>
+        </div>
+      </div>
+
+      {/* ── FLOOD SEVERITY ── */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2">
             <Droplets className="w-4 h-4 text-blue-400" />
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Flood Severity</span>
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Flood Severity</span>
           </div>
-          <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-black uppercase border", getSeverityBg(result.floodSeverity))}>
+          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase border", getSeverityBg(result.floodSeverity))}>
             <SeverityDot severity={result.floodSeverity} />
             {result.floodSeverity}
           </span>
         </div>
         <SeverityBar severity={result.floodSeverity} />
-        <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Water Condition</p>
-          <p className="text-xs text-slate-300 leading-relaxed">{result.waterCondition}</p>
-        </div>
+        <p className="text-xs text-slate-300 mt-2 line-clamp-2">{result.waterCondition}</p>
       </div>
 
-      {/* Rescue priority — full width */}
-      <div className={cn("rounded-xl border p-5", getSeverityBg(result.rescuePriority))}>
+      {/* ── RESCUE PRIORITY ── */}
+      <div className={cn("rounded-lg border p-4", getSeverityBg(result.rescuePriority))}>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className={cn("w-4 h-4", getSeverityColor(result.rescuePriority))} />
+            <span className="text-xs font-bold text-slate-200 uppercase tracking-wide">Rescue Priority</span>
+          </div>
+          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase border", getSeverityBg(result.rescuePriority))}>
+            <SeverityDot severity={result.rescuePriority} />
+            {result.rescuePriority}
+          </span>
+        </div>
+        <p className="text-xs text-slate-200 line-clamp-2">{truncateText(result.summary, 2)}</p>
+      </div>
+
+      {/* ── SITUATION SUMMARY ── */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <AlertCircle className="w-4 h-4 text-slate-400" />
+          <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Situation Summary</span>
+        </div>
+        <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{truncateText(result.summary, 3)}</p>
+      </div>
+
+      {/* ── RECOMMENDED ACTIONS ── */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
         <div className="flex items-center gap-2 mb-3">
-          <ShieldAlert className={cn("w-4 h-4", getSeverityColor(result.rescuePriority))} />
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Rescue Priority</span>
+          <CheckCircle2 className="w-4 h-4 text-green-400" />
+          <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Recommended Actions</span>
         </div>
-        <RescuePriority
-          priority={result.rescuePriority}
-          peopleDetected={result.peopleDetected}
-          urgentPeople={result.urgentPeople}
-          recommendations={result.recommendations}
-          summary={result.summary}
-        />
+        <div className="flex flex-col gap-2">
+          {result.recommendations.length === 0 ? (
+            <p className="text-xs text-slate-500">No specific recommendations.</p>
+          ) : (
+            result.recommendations.map((rec, i) => (
+              <div key={i} className="flex gap-2 items-start">
+                <span className="text-green-400 text-xs font-bold shrink-0">✓</span>
+                <p className="text-xs text-slate-300 line-clamp-1">{rec}</p>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      {/* Hazards — collapsible */}
-      <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 overflow-hidden">
+      {/* ── HAZARDS DETECTED ── */}
+      <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 overflow-hidden">
         <button
           onClick={onToggleHazards}
-          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-orange-500/5 transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-orange-500/10 transition-colors"
           aria-expanded={hazardsOpen}
         >
           <TriangleAlert className="w-4 h-4 text-orange-400 shrink-0" />
@@ -260,22 +280,31 @@ function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, on
             {result.hazards.length}
           </span>
           {hazardsOpen ? (
-            <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+            <ChevronUp className="w-4 h-4 text-slate-500 shrink-0" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+            <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
           )}
         </button>
 
         {hazardsOpen && (
-          <div className="px-5 pb-5 flex flex-col gap-3">
+          <div className="px-4 pb-4 pt-2 flex flex-col gap-2">
             {result.hazards.length === 0 ? (
-              <div className="flex items-center gap-2 py-3">
+              <div className="flex items-center gap-2 py-2">
                 <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                <p className="text-sm text-slate-400">No hazards detected in this scene.</p>
+                <p className="text-xs text-slate-400">No hazards detected.</p>
               </div>
             ) : (
               result.hazards.map((h, i) => (
-                <HazardCard key={i} hazard={h} index={i} />
+                <div key={i} className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="text-xs font-bold text-slate-200">{h.name}</p>
+                    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold uppercase border shrink-0", getSeverityBg(h.severity))}>
+                      <SeverityDot severity={h.severity} />
+                      {h.severity}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 line-clamp-1">{h.description}</p>
+                </div>
               ))
             )}
           </div>
