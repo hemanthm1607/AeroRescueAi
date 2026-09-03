@@ -35,6 +35,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [isAutoMode, setIsAutoMode] = useState(false);
 
   // Clean up stream and auto-loop on unmount
   useEffect(() => {
@@ -109,15 +110,35 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+
+        // Wait for video to have valid frame data before starting auto-loop
+        const waitForVideoReady = () => {
+          const video = videoRef.current;
+          if (
+            video &&
+            video.readyState >= 2 && // HAVE_CURRENT_DATA or better
+            video.videoWidth > 0 &&
+            video.videoHeight > 0
+          ) {
+            setCameraState("active");
+            setIsAutoMode(true);
+
+            // Capture and analyze immediately
+            captureAndAnalyzeFrame();
+
+            // Start automatic 10-second analysis loop
+            if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
+            autoLoopIntervalRef.current = setInterval(() => {
+              captureAndAnalyzeFrame();
+            }, 10_000);
+          } else {
+            // Video not ready yet, check again soon
+            setTimeout(waitForVideoReady, 100);
+          }
+        };
+
+        waitForVideoReady();
       }
-
-      setCameraState("active");
-
-      // Start automatic 10-second analysis loop
-      if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
-      autoLoopIntervalRef.current = setInterval(() => {
-        captureAndAnalyzeFrame();
-      }, 10_000);
     } catch (err) {
       stopStream();
       const e = err as DOMException;
@@ -149,6 +170,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     setCameraState("idle");
     setCapturedFrame(null);
     setErrorMessage("");
+    setIsAutoMode(false);
   }
 
   function captureFrame() {
@@ -344,6 +366,16 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
             <Camera className="w-4 h-4 animate-pulse" />
             Connecting…
           </Button>
+        ) : cameraState === "active" && isAutoMode ? (
+          <Button
+            variant="danger"
+            onClick={stopCamera}
+            className="gap-2"
+            fullWidth
+          >
+            <VideoOff className="w-4 h-4" />
+            Stop Drone Camera
+          </Button>
         ) : cameraState === "active" ? (
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -365,8 +397,8 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
           </div>
         ) : null}
 
-        {/* Captured frame actions */}
-        {cameraState === "captured" && (
+        {/* Captured frame actions - HIDDEN in auto mode */}
+        {cameraState === "captured" && !isAutoMode && (
           <>
             <Button
               variant="primary"
