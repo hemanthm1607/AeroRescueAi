@@ -10,7 +10,6 @@ import {
   ChevronUp,
   Activity,
   ImageUp,
-  AlertCircle,
 } from "lucide-react";
 import type { AnalysisResult, InputMode } from "@/types";
 import type { ErrorType } from "@/components/ErrorState";
@@ -159,105 +158,79 @@ function rescueTeamsRequired(people: number): number {
 function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, onToggleHazards }: ResultCardsProps) {
   const teams = rescueTeamsRequired(result.peopleDetected);
 
-  // Helper to truncate text to specified lines
-  const truncateText = (text: string, lines: number) => {
-    const lineArray = text.split('\n');
-    if (lineArray.length > lines) {
-      return lineArray.slice(0, lines).join('\n') + '...';
-    }
-    return text;
-  };
-
   return (
     <div className="flex flex-col gap-4">
 
-      {/* ── TOP SUMMARY CARDS ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* ── ROW 1: PEOPLE / RESCUE TEAMS / DISASTER TYPE ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* People Detected */}
-        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 flex flex-col items-center gap-1">
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 flex flex-col justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">People Detected</p>
-          <p className="text-4xl font-black text-blue-300">{result.peopleDetected}</p>
-          <p className="text-xs text-slate-500">{result.peopleDetected === 1 ? "person" : "people"} in scene</p>
+          <p className="text-3xl font-black text-blue-300 mt-1">{result.peopleDetected}</p>
+          <p className="text-xs text-slate-500 mt-1">{result.peopleDetected === 1 ? "person" : "people"} in scene</p>
         </div>
 
         {/* Rescue Teams */}
-        <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-4 flex flex-col items-center gap-1">
+        <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 flex flex-col justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Rescue Teams</p>
-          <p className="text-4xl font-black text-orange-300">{teams}</p>
-          <p className="text-xs text-slate-500">{teams === 1 ? "team" : "teams"} required</p>
+          <p className="text-3xl font-black text-orange-300 mt-1">{teams}</p>
+          <p className="text-xs text-slate-500 mt-1">{teams === 1 ? "team" : "teams"} required</p>
         </div>
 
         {/* Disaster Type */}
-        <div className="rounded-lg border border-slate-600/40 bg-slate-800/50 p-4 flex flex-col items-center gap-1">
+        <div className="rounded-lg border border-slate-600/40 bg-slate-800/50 p-3 flex flex-col justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Disaster Type</p>
-          <p className="text-2xl font-black text-slate-100">{result.disasterType}</p>
-          <p className="text-xs text-slate-500">from image</p>
+          <p className="text-2xl font-black text-slate-100 mt-1">{result.disasterType}</p>
         </div>
       </div>
 
-      {/* ── SCENE PREVIEW ── */}
-      <div className="rounded-lg border border-slate-700/50 bg-slate-900/50 overflow-hidden">
-        <img src={previewUrl} alt="Analysed scene" className="w-full h-32 object-cover" />
-        <div className="px-3 py-2 border-t border-slate-700/40 bg-slate-950/50">
-          <p className="text-[10px] text-slate-500 uppercase tracking-wide">
-            {inputMode === "drone" ? "Drone frame" : "Uploaded image"} · {timestamp}
-          </p>
-        </div>
-      </div>
-
-      {/* ── FLOOD SEVERITY ── */}
-      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2">
-            <Droplets className="w-4 h-4 text-blue-400" />
+      {/* ── ROW 2: FLOOD SEVERITY / RESCUE PRIORITY / SITUATION SUMMARY ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Flood Severity */}
+        <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-3 flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Flood Severity</span>
+            <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold uppercase border whitespace-nowrap", getSeverityBg(result.floodSeverity))}>
+              <SeverityDot severity={result.floodSeverity} />
+              {result.floodSeverity}
+            </span>
           </div>
-          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase border", getSeverityBg(result.floodSeverity))}>
-            <SeverityDot severity={result.floodSeverity} />
-            {result.floodSeverity}
-          </span>
+          <SeverityBar severity={result.floodSeverity} />
+          <p className="text-xs text-slate-400 mt-2 line-clamp-1">{result.waterCondition}</p>
         </div>
-        <SeverityBar severity={result.floodSeverity} />
-        <p className="text-xs text-slate-300 mt-2 line-clamp-2">{result.waterCondition}</p>
-      </div>
 
-      {/* ── RESCUE PRIORITY ── */}
-      <div className={cn("rounded-lg border p-4", getSeverityBg(result.rescuePriority))}>
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className={cn("w-4 h-4", getSeverityColor(result.rescuePriority))} />
+        {/* Rescue Priority */}
+        <div className={cn("rounded-lg border p-3 flex flex-col justify-between", getSeverityBg(result.rescuePriority))}>
+          <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-xs font-bold text-slate-200 uppercase tracking-wide">Rescue Priority</span>
+            <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold uppercase border whitespace-nowrap", getSeverityBg(result.rescuePriority))}>
+              <SeverityDot severity={result.rescuePriority} />
+              {result.rescuePriority}
+            </span>
           </div>
-          <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase border", getSeverityBg(result.rescuePriority))}>
-            <SeverityDot severity={result.rescuePriority} />
-            {result.rescuePriority}
-          </span>
+          <p className="text-xs text-slate-200 line-clamp-1">{result.summary}</p>
         </div>
-        <p className="text-xs text-slate-200 line-clamp-2">{truncateText(result.summary, 2)}</p>
+
+        {/* Situation Summary */}
+        <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-3 flex flex-col justify-between">
+          <p className="text-xs font-bold text-slate-300 uppercase tracking-wide mb-2">Situation Summary</p>
+          <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">{result.summary}</p>
+        </div>
       </div>
 
-      {/* ── SITUATION SUMMARY ── */}
-      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
+      {/* ── ROW 3: RECOMMENDED ACTIONS (FULL WIDTH) ── */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-3">
         <div className="flex items-center gap-2 mb-2">
-          <AlertCircle className="w-4 h-4 text-slate-400" />
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Situation Summary</span>
-        </div>
-        <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{truncateText(result.summary, 3)}</p>
-      </div>
-
-      {/* ── RECOMMENDED ACTIONS ── */}
-      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <CheckCircle2 className="w-4 h-4 text-green-400" />
+          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
           <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">Recommended Actions</span>
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-3">
           {result.recommendations.length === 0 ? (
             <p className="text-xs text-slate-500">No specific recommendations.</p>
           ) : (
             result.recommendations.map((rec, i) => (
-              <div key={i} className="flex gap-2 items-start">
-                <span className="text-green-400 text-xs font-bold shrink-0">✓</span>
+              <div key={i} className="flex items-start gap-1">
+                <span className="text-green-400 text-xs font-bold shrink-0 mt-0.5">✓</span>
                 <p className="text-xs text-slate-300 line-clamp-1">{rec}</p>
               </div>
             ))
@@ -265,7 +238,7 @@ function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, on
         </div>
       </div>
 
-      {/* ── HAZARDS DETECTED ── */}
+      {/* ── ROW 4: HAZARDS DETECTED (FULL WIDTH) ── */}
       <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 overflow-hidden">
         <button
           onClick={onToggleHazards}
@@ -287,25 +260,27 @@ function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, on
         </button>
 
         {hazardsOpen && (
-          <div className="px-4 pb-4 pt-2 flex flex-col gap-2">
+          <div className="px-4 pb-4 pt-2">
             {result.hazards.length === 0 ? (
               <div className="flex items-center gap-2 py-2">
                 <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
                 <p className="text-xs text-slate-400">No hazards detected.</p>
               </div>
             ) : (
-              result.hazards.map((h, i) => (
-                <div key={i} className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <p className="text-xs font-bold text-slate-200">{h.name}</p>
-                    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold uppercase border shrink-0", getSeverityBg(h.severity))}>
-                      <SeverityDot severity={h.severity} />
-                      {h.severity}
-                    </span>
+              <div className="flex flex-wrap gap-2">
+                {result.hazards.map((h, i) => (
+                  <div key={i} className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 flex-shrink-0 max-w-xs">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="text-xs font-bold text-slate-200">{h.name}</p>
+                      <span className={cn("inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-xs font-bold uppercase border shrink-0", getSeverityBg(h.severity))}>
+                        <SeverityDot severity={h.severity} />
+                        {h.severity}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 line-clamp-1">{h.description}</p>
                   </div>
-                  <p className="text-xs text-slate-400 line-clamp-1">{h.description}</p>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         )}
