@@ -14,7 +14,7 @@ import { Realtime } from "ably";
 import type { RealtimeChannel, Message } from "ably";
 import DroneCamera from "@/components/DroneCamera";
 import type { AnalysisResult } from "@/types";
-import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT } from "@/lib/ablyConfig";
+import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT, EVENT_LOCATION } from "@/lib/ablyConfig";
 
 type ConnStatus =
   | "connecting"
@@ -104,8 +104,31 @@ export default function DronePage() {
       });
     }, 5_000);
 
+    // Periodic GPS location updates (if available)
+    const locationId = setInterval(() => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const locPayload = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              timestamp: new Date().toISOString(),
+            };
+            ch.publish(EVENT_LOCATION, locPayload).catch((err) => {
+              console.error("[DronePage] Location publish failed:", err);
+            });
+          },
+          () => {
+            // Silent fail - location unavailable
+          },
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 }
+        );
+      }
+    }, 10_000); // Every 10 seconds
+
     return () => {
       clearInterval(hbId);
+      clearInterval(locationId);
       ch.publish(EVENT_HEARTBEAT, { online: false }).catch(() => {});
       ably.close();
     };

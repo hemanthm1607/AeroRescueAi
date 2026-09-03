@@ -11,3 +11,9 @@ export const EVENT_ANALYSIS = "analysis-result";
 
 /** Event name for phone heartbeat / connection status. */
 export const EVENT_HEARTBEAT = "heartbeat";
+
+/** Event name for drone location updates */
+export const EVENT_LOCATION = "drone-location";
+
+/** Event name for incident updates */
+export const EVENT_INCIDENT_UPDATE = "incident-update";

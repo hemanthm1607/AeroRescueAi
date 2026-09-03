@@ -23,6 +23,9 @@ export interface AnalysisResult {
   locationName?: string;
 }
 
+export type IncidentStatus = "NEW" | "ASSIGNED" | "EN_ROUTE" | "RESCUED";
+export type RescueTeam = "Team 01" | "Team 02" | "Team 03" | "Team 04";
+
 export interface AnalysisHistoryEntry {
   id: string;
   incidentId?: string;
@@ -33,6 +36,24 @@ export interface AnalysisHistoryEntry {
   latitude?: number;
   longitude?: number;
   locationName?: string;
+  // New incident management fields
+  status?: IncidentStatus;
+  assignedTeam?: RescueTeam;
+}
+
+export interface DroneLocationUpdate {
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+}
+
+export interface EmergencyAlert {
+  id: string;
+  incidentId: string;
+  type: "HIGH_PRIORITY" | "CRITICAL_PRIORITY" | "HIGH_FLOOD" | "CRITICAL_FLOOD";
+  reason: string;
+  timestamp: string;
+  dismissed: boolean;
 }
 
 export interface User {

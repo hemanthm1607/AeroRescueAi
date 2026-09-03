@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 const MODULE_LABELS: Record<ModuleId, { title: string; sub: string }> = {
   detection: { title: "Upload & Live Detection", sub: "AI-powered flood scene analysis" },
   battery:   { title: "Drone Battery & Flight Status", sub: "Simulation data — no physical drone connected" },
+  incidents: { title: "Incident Management", sub: "Track, assign teams, and manage rescue operations" },
   history:   { title: "Analysis History", sub: "Past flood scene analyses" },
   ourapp:    { title: "About AeroAiRescue", sub: "AI-Powered Disaster Response Platform" },
   map:       { title: "Incident Map", sub: "GPS-tracked incidents with coordinates" },

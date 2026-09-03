@@ -6,7 +6,8 @@ import { Realtime } from "ably";
 import type { Message } from "ably";
 import { cn } from "@/lib/utils";
 import type { AnalysisResult } from "@/types";
-import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT } from "@/lib/ablyConfig";
+import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT, EVENT_LOCATION } from "@/lib/ablyConfig";
+import { updateDroneLocation } from "@/lib/droneLocation";
 
 interface DroneAnalysisMessage {
   result: AnalysisResult;
@@ -76,6 +77,20 @@ export default function DroneStatusWidget({ onResultReceived, isAnalyzing }: Dro
 
     ch.subscribe(EVENT_HEARTBEAT, heartbeatHandler);
     ch.subscribe(EVENT_ANALYSIS, analysisHandler);
+
+    // Listen for location updates from drone
+    const locationHandler = (msg: Message) => {
+      const payload = msg.data as { latitude?: number; longitude?: number; timestamp?: string };
+      if (payload.latitude !== undefined && payload.longitude !== undefined) {
+        updateDroneLocation({
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          timestamp: payload.timestamp || new Date().toISOString()
+        });
+      }
+    };
+
+    ch.subscribe(EVENT_LOCATION, locationHandler);
 
     // Mark phone as disconnected if no heartbeat for 15 s
     let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;

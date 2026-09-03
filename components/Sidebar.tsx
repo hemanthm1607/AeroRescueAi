@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Shield, ScanSearch, BatteryCharging, History, Info, Menu, X, ChevronRight, Map, Zap, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ModuleId = "detection" | "battery" | "history" | "map" | "resources" | "stats" | "ourapp";
+export type ModuleId = "detection" | "battery" | "incidents" | "history" | "map" | "resources" | "stats" | "ourapp";
 
 interface NavItem {
   id: ModuleId;
@@ -40,6 +40,17 @@ const NAV: NavItem[] = [
     activeBorder: "border-l-green-500",
     activeText: "text-green-300",
     activeIconColor: "text-green-400",
+  },
+  {
+    id: "incidents",
+    label: "Incidents",
+    sublabel: "Active Cases",
+    icon: Shield,
+    accent: "purple",
+    activeBg: "bg-purple-500/10",
+    activeBorder: "border-l-purple-500",
+    activeText: "text-purple-300",
+    activeIconColor: "text-purple-400",
   },
   {
     id: "history",

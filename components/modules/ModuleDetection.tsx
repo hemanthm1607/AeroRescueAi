@@ -18,6 +18,7 @@ import type { ErrorType } from "@/components/ErrorState";
 import { getSeverityBg, getSeverityColor, cn, formatTimestamp } from "@/lib/utils";
 import { downloadJSON } from "@/lib/export";
 import { formatCoordinates } from "@/lib/geo";
+import { exportIncidentToPDF } from "@/lib/pdfExport";
 import ImageUploader from "@/components/ImageUploader";
 import DroneStatusWidget from "@/components/DroneStatusWidget";
 import LoadingState from "@/components/LoadingState";
@@ -178,7 +179,8 @@ function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, on
         longitude: result.longitude,
         locationName: result.locationName,
       };
-      downloadJSON(entry, `incident-${result.incidentId || "export"}.json`);
+      // Export to PDF
+      exportIncidentToPDF(entry);
     } finally {
       setIsExporting(false);
     }

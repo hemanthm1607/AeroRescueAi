@@ -107,3 +107,16 @@ export function validateImageFile(file: File): string | null {
   }
   return null;
 }
+
+export function formatCoordinates(
+  latitude: number,
+  longitude: number
+): string {
+  const latDir = latitude >= 0 ? "N" : "S";
+  const lonDir = longitude >= 0 ? "E" : "W";
+
+  const latAbs = Math.abs(latitude).toFixed(4);
+  const lonAbs = Math.abs(longitude).toFixed(4);
+
+  return `${latAbs}°${latDir}, ${lonAbs}°${lonDir}`;
+}
