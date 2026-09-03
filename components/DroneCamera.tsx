@@ -28,15 +28,20 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const autoLoopIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isAutoAnalyzingRef = useRef(false);
 
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
 
-  // Clean up stream on unmount
+  // Clean up stream and auto-loop on unmount
   useEffect(() => {
-    return () => stopStream();
+    return () => {
+      if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
+      stopStream();
+    };
   }, []);
 
   function stopStream() {
@@ -47,6 +52,33 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+  }
+
+  function captureAndAnalyzeFrame() {
+    if (isAutoAnalyzingRef.current || isAnalyzing) return; // Prevent simultaneous analyses
+    if (!videoRef.current || !canvasRef.current) return;
+
+    isAutoAnalyzingRef.current = true;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      isAutoAnalyzingRef.current = false;
+      return;
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+
+    const base64 = dataUrlToBase64(dataUrl);
+    const mime = getMimeFromDataUrl(dataUrl);
+    onAnalyze(base64, mime, dataUrl);
+
+    isAutoAnalyzingRef.current = false;
   }
 
   const startCamera = useCallback(async () => {
@@ -80,6 +112,12 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
       }
 
       setCameraState("active");
+
+      // Start automatic 10-second analysis loop
+      if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
+      autoLoopIntervalRef.current = setInterval(() => {
+        captureAndAnalyzeFrame();
+      }, 10_000);
     } catch (err) {
       stopStream();
       const e = err as DOMException;
@@ -103,6 +141,10 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   }, [facingMode]);
 
   function stopCamera() {
+    if (autoLoopIntervalRef.current) {
+      clearInterval(autoLoopIntervalRef.current);
+      autoLoopIntervalRef.current = null;
+    }
     stopStream();
     setCameraState("idle");
     setCapturedFrame(null);
@@ -134,6 +176,10 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   }
 
   function retakeFrame() {
+    if (autoLoopIntervalRef.current) {
+      clearInterval(autoLoopIntervalRef.current);
+      autoLoopIntervalRef.current = null;
+    }
     setCapturedFrame(null);
     startCamera();
   }
@@ -146,6 +192,10 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   }
 
   function toggleFacingMode() {
+    if (autoLoopIntervalRef.current) {
+      clearInterval(autoLoopIntervalRef.current);
+      autoLoopIntervalRef.current = null;
+    }
     setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
     if (cameraState === "active") {
       stopStream();
