@@ -15,6 +15,14 @@ import type { RealtimeChannel, Message } from "ably";
 import DroneCamera from "@/components/DroneCamera";
 import type { AnalysisResult } from "@/types";
 import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT, EVENT_LOCATION } from "@/lib/ablyConfig";
+import { getLocationName } from "@/lib/geo";
+
+interface DroneLocationPayload {
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+  locationName?: string;
+}
 
 type ConnStatus =
   | "connecting"
@@ -78,12 +86,28 @@ export default function DronePage() {
       if (navigator.geolocation && !gpsWatcherRef.current) {
         console.log("[DronePage] Starting GPS watch");
         gpsWatcherRef.current = navigator.geolocation.watchPosition(
-          (position) => {
-            const locPayload = {
+          async (position) => {
+            const locPayload: DroneLocationPayload = {
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
               timestamp: new Date().toISOString(),
             };
+            
+            // Resolve location name in background (non-blocking)
+            try {
+              const locationName = await getLocationName(
+                position.coords.latitude,
+                position.coords.longitude,
+                3000 // 3 second timeout for reverse geocoding
+              );
+              if (locationName) {
+                locPayload.locationName = locationName;
+              }
+            } catch (err) {
+              console.log("[DronePage] Location name resolution skipped");
+              // Continue without location name - it's optional
+            }
+            
             const ch = channelRef.current;
             if (ch) {
               ch.publish(EVENT_LOCATION, locPayload).catch((err) => {

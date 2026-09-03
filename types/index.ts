@@ -45,6 +45,7 @@ export interface DroneLocationUpdate {
   latitude: number;
   longitude: number;
   timestamp: string;
+  locationName?: string;
 }
 
 export interface EmergencyAlert {

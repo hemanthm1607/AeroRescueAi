@@ -80,12 +80,13 @@ export default function DroneStatusWidget({ onResultReceived, isAnalyzing }: Dro
 
     // Listen for location updates from drone
     const locationHandler = (msg: Message) => {
-      const payload = msg.data as { latitude?: number; longitude?: number; timestamp?: string };
+      const payload = msg.data as { latitude?: number; longitude?: number; timestamp?: string; locationName?: string };
       if (payload.latitude !== undefined && payload.longitude !== undefined) {
         updateDroneLocation({
           latitude: payload.latitude,
           longitude: payload.longitude,
-          timestamp: payload.timestamp || new Date().toISOString()
+          timestamp: payload.timestamp || new Date().toISOString(),
+          locationName: payload.locationName
         });
       }
     };

@@ -94,15 +94,68 @@ export function calculateDistance(
 }
 
 /**
- * Reverse geocoding stub (placeholder for future integration)
- * In a real implementation, this would call an API to get location name
- * For now, returns null to indicate this feature requires backend integration
+ * Reverse geocoding using OpenStreetMap Nominatim API (free, no API key required)
+ * Returns city/area name or null if unavailable
+ * Gracefully handles errors without crashing
  */
 export async function getLocationName(
-  _latitude: number,
-  _longitude: number
+  latitude: number,
+  longitude: number,
+  timeoutMs: number = 5000
 ): Promise<string | null> {
-  // Stub: Real implementation would call an API like Open Street Map
-  // Returns null gracefully - locationName is optional
-  return null;
+  try {
+    // Use Nominatim reverse geocoding API (free, open source)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`;
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "Accept-Language": "en",
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.log("[geo] Nominatim API error:", response.status);
+      return null;
+    }
+
+    const data = (await response.json()) as {
+      address?: {
+        city?: string;
+        town?: string;
+        village?: string;
+        county?: string;
+        state?: string;
+        country?: string;
+      };
+    };
+
+    // Prefer: city > town > village > county > state
+    const address = data.address;
+    if (!address) return null;
+
+    const locationName =
+      address.city ||
+      address.town ||
+      address.village ||
+      address.county ||
+      address.state ||
+      address.country ||
+      null;
+
+    if (locationName) {
+      console.log("[geo] Location resolved:", locationName);
+    }
+    return locationName;
+  } catch (err) {
+    // Silently fail - reverse geocoding is optional
+    const errMsg = err instanceof Error ? err.message : "Unknown error";
+    console.log("[geo] Reverse geocoding failed:", errMsg);
+    return null;
+  }
 }

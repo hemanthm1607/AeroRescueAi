@@ -88,9 +88,25 @@ export default function DroneLocationWidget({ className }: DroneLocationWidgetPr
 
       {location ? (
         <div className="space-y-3">
+          {/* Location Name (if available) */}
+          {location.locationName && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <MapPin className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-slate-400 mb-1">LOCATION</div>
+                  <p className="text-sm font-semibold text-blue-300 break-words">
+                    {location.locationName}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Coordinates */}
           <div className="flex items-center gap-2 text-sm">
             <MapPin className="w-4 h-4 text-green-400 flex-shrink-0" />
-            <span className="font-mono text-slate-300">
+            <span className="font-mono text-slate-300 text-xs">
               {formatCoordinates(location.latitude, location.longitude)}
             </span>
           </div>
