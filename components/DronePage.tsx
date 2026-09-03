@@ -13,8 +13,8 @@ import {
 import { Realtime } from "ably";
 import type { RealtimeChannel, Message } from "ably";
 import DroneCamera from "@/components/DroneCamera";
-import type { AnalysisResult } from "@/types";
-import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT, EVENT_LOCATION } from "@/lib/ablyConfig";
+import type { AnalysisResult, DroneTelemetry } from "@/types";
+import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT, EVENT_LOCATION, EVENT_TELEMETRY } from "@/lib/ablyConfig";
 import { getLocationName } from "@/lib/geo";
 
 interface DroneLocationPayload {
@@ -61,6 +61,56 @@ async function resizeForPreview(dataUrl: string): Promise<string> {
   });
 }
 
+/** Collect real telemetry from device: battery, GPS, camera status, connection status */
+async function collectDeviceTelemetry(
+  gpsLocation: { latitude: number; longitude: number } | null,
+  cameraActive: boolean,
+  ablyConnected: boolean
+): Promise<DroneTelemetry> {
+  const telemetry: DroneTelemetry = {
+    timestamp: new Date().toISOString(),
+    camera: { active: cameraActive },
+    comms: { connected: ablyConnected },
+  };
+
+  // Collect battery data if available
+  try {
+    if (navigator && (navigator as any).getBattery) {
+      const battery = await ((navigator as any).getBattery() as Promise<any>);
+      telemetry.battery = {
+        level: Math.round(battery.level * 100),
+        charging: battery.charging,
+        health: "Unavailable", // Battery API doesn't provide health
+      };
+    }
+  } catch {
+    // Battery API not available
+  }
+
+  // Include GPS location if available
+  if (gpsLocation) {
+    telemetry.gps = gpsLocation;
+    
+    // Try to get altitude and speed from geolocation (if browser provides them)
+    try {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((position) => {
+          if (position.coords.altitude !== null) {
+            telemetry.altitude = Math.round(position.coords.altitude);
+          }
+          if (position.coords.speed !== null) {
+            telemetry.speed = Math.round(position.coords.speed * 3.6); // m/s to km/h
+          }
+        });
+      }
+    } catch {
+      // Geolocation not available
+    }
+  }
+
+  return telemetry;
+}
+
 export default function DronePage() {
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [lastSentAt, setLastSentAt] = useState<string | null>(null);
@@ -68,6 +118,9 @@ export default function DronePage() {
   const ablyRef = useRef<Realtime | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const gpsWatcherRef = useRef<number | null>(null);
+  const cameraActiveRef = useRef(false);
+  const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentGpsRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   // ── Connect to Ably on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -91,6 +144,12 @@ export default function DronePage() {
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
               timestamp: new Date().toISOString(),
+            };
+            
+            // Store GPS for telemetry
+            currentGpsRef.current = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
             };
             
             // Resolve location name in background (non-blocking)
@@ -166,8 +225,23 @@ export default function DronePage() {
       }
     }, 5_000);
 
+    // Periodic telemetry publishing when camera is active
+    const telId = setInterval(async () => {
+      if (cameraActiveRef.current && channelRef.current) {
+        const telemetry = await collectDeviceTelemetry(
+          currentGpsRef.current,
+          cameraActiveRef.current,
+          ably.connection.state === "connected"
+        );
+        channelRef.current.publish(EVENT_TELEMETRY, telemetry).catch((err) => {
+          console.error("[DronePage] Telemetry publish failed:", err);
+        });
+      }
+    }, 2_000); // Every 2 seconds
+
     return () => {
       clearInterval(hbId);
+      clearInterval(telId);
       if (gpsWatcherRef.current) {
         navigator.geolocation.clearWatch(gpsWatcherRef.current);
         gpsWatcherRef.current = null;
@@ -255,6 +329,12 @@ export default function DronePage() {
     }
   }, []);
 
+  // ── Handle camera state changes (start/stop) ──────────────────────────────
+  const handleCameraStateChange = useCallback((isActive: boolean) => {
+    cameraActiveRef.current = isActive;
+    console.log(`[DronePage] Camera state changed: ${isActive ? "active" : "inactive"}`);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#060b14] flex flex-col">
       <div className="h-0.5 bg-gradient-to-r from-red-600 via-orange-500 to-red-600" />
@@ -298,6 +378,7 @@ export default function DronePage() {
             <DroneCamera
               onAnalyze={handleDroneAnalyze}
               isAnalyzing={connStatus === "analyzing" || connStatus === "publishing"}
+              onCameraStateChange={handleCameraStateChange}
             />
           </div>
         </div>

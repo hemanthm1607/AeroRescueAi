@@ -17,3 +17,6 @@ export const EVENT_LOCATION = "drone-location";
 
 /** Event name for incident updates */
 export const EVENT_INCIDENT_UPDATE = "incident-update";
+
+/** Event name for drone telemetry (battery, GPS, camera status, connection status) */
+export const EVENT_TELEMETRY = "drone-telemetry";

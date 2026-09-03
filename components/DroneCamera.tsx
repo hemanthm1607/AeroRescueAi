@@ -27,17 +27,20 @@ interface DroneCameraProps {
     longitude?: number
   ) => void;
   isAnalyzing: boolean;
+  onCameraStateChange?: (isActive: boolean) => void;
 }
 
 type CameraState = "idle" | "requesting" | "active" | "error" | "captured";
 
-export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps) {
+export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChange }: DroneCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const autoLoopIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isAutoAnalyzingRef = useRef(false);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const batteryWatcherRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onCameraStateChangeRef = useRef(onCameraStateChange);
 
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
@@ -48,11 +51,17 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   const [lastAnalysisTime, setLastAnalysisTime] = useState<string | null>(null);
   const [gpsLocation, setGpsLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
+  // Update ref when onCameraStateChange changes
+  useEffect(() => {
+    onCameraStateChangeRef.current = onCameraStateChange;
+  }, [onCameraStateChange]);
+
   // Clean up stream and auto-loop on unmount
   useEffect(() => {
     return () => {
       if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (batteryWatcherRef.current) clearInterval(batteryWatcherRef.current);
       stopStream();
     };
   }, []);
@@ -65,6 +74,34 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    if (batteryWatcherRef.current) {
+      clearInterval(batteryWatcherRef.current);
+      batteryWatcherRef.current = null;
+    }
+  }
+
+  function startBatteryMonitoring() {
+    // Request Battery Status API if available
+    if (navigator && (navigator as any).getBattery) {
+      ((navigator as any).getBattery() as Promise<any>).then((battery: any) => {
+        const updateBatteryStatus = () => {
+          onCameraStateChangeRef.current?.(true);
+        };
+        battery.addEventListener("levelchange", updateBatteryStatus);
+        battery.addEventListener("chargingchange", updateBatteryStatus);
+        updateBatteryStatus();
+      }).catch(() => {
+        // Battery API not available
+      });
+    }
+    
+    // Also poll for updates periodically (some browsers update infrequently)
+    if (batteryWatcherRef.current) {
+      clearInterval(batteryWatcherRef.current);
+    }
+    batteryWatcherRef.current = setInterval(() => {
+      onCameraStateChangeRef.current?.(true);
+    }, 5000); // Every 5 seconds
   }
 
   function captureAndAnalyzeFrame() {
@@ -174,6 +211,9 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
             setLastAnalysisTime(null);
             setCountdown(10);
 
+            // Start battery monitoring
+            startBatteryMonitoring();
+
             // Capture and analyze immediately
             captureAndAnalyzeFrame();
 
@@ -232,6 +272,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     setCountdown(10);
     setLastAnalysisTime(null);
     setGpsLocation(null);
+    onCameraStateChangeRef.current?.(false);
   }
 
   function captureFrame() {
@@ -290,6 +331,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     if (cameraState === "active") {
       stopStream();
       setCameraState("idle");
+      onCameraStateChangeRef.current?.(false);
     }
   }
 

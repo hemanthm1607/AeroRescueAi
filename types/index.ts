@@ -76,3 +76,24 @@ export interface ApiAnalyzeResponse {
   result?: AnalysisResult;
   error?: string;
 }
+
+export interface DroneTelemetry {
+  timestamp: string;
+  battery?: {
+    level: number; // 0-100 or "Unavailable"
+    charging: boolean;
+    health: string; // "Unavailable" if not provided by browser
+  };
+  camera?: {
+    active: boolean;
+  };
+  gps?: {
+    latitude: number;
+    longitude: number;
+  };
+  altitude?: number | null; // meters, null if unavailable
+  speed?: number | null; // km/h, null if unavailable
+  comms?: {
+    connected: boolean;
+  };
+}
