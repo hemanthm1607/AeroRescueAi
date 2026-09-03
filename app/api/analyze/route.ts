@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { validateAnalysisResult } from "@/lib/validate";
 import type { ApiAnalyzeResponse } from "@/types";
 
-const VISION_MODEL =
-  process.env.GROQ_VISION_MODEL ?? "qwen/qwen3.6-27b";
+const VISION_MODEL = "gemini-2.5-flash";
 
 const ANALYSIS_PROMPT = `
 Analyze this flood/disaster image for rescue operations.
@@ -49,31 +48,37 @@ Example format:
   "disasterType": "Flood"
 }
 
-Rules:
-- Return JSON only.
-- Do not use markdown.
-- peopleDetected must be an integer.
-- urgentPeople must be an integer.
-- urgentPeople cannot be greater than peopleDetected.
+CRITICAL RULES:
+- Return JSON only, no markdown.
+- Do not invent people that are not clearly visible in the image.
+- Count only people you can see with reasonable clarity.
+- peopleDetected must be an integer (0 if no people visible).
+- urgentPeople must be an integer, cannot exceed peopleDetected.
+- floodSeverity: assess water depth, flow speed, turbidity. Use LOW for minor water, MEDIUM for ankle-to-knee depth, HIGH for waist-to-chest, CRITICAL for overhead/dangerous conditions.
+- waterCondition: describe the actual visible water state (color, depth, flow, hazards).
+- rescuePriority: based on people count, hazards, and visible risks.
+- hazards: list only actual visible threats (water, debris, structures, etc.).
+- recommendations: actionable rescue/safety guidance based on visible conditions.
+- disasterType: identify from image evidence only (Flood, Earthquake, Landslide, Cyclone, Fire, Other).
 - Always include every required key.
 - If no people are visible, use 0.
 - If no hazards are visible, return an empty hazards array.
-- disasterType must be based only on visible evidence in the image.
+- Be conservative: if uncertain, mark as uncertain in the recommendation rather than guessing.
 `;
 
 export async function POST(
   req: NextRequest
 ): Promise<NextResponse<ApiAnalyzeResponse>> {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    console.error("[analyze] GROQ_API_KEY is not set");
+    console.error("[analyze] GEMINI_API_KEY is not set");
 
     return NextResponse.json(
       {
         success: false,
         error:
-          "AI service is not configured. Add GROQ_API_KEY to .env.local and restart the dev server.",
+          "AI service is not configured. Add GEMINI_API_KEY to .env.local and restart the dev server.",
       },
       { status: 503 }
     );
@@ -119,43 +124,41 @@ export async function POST(
   }
 
   try {
-    const groq = new Groq({
-      apiKey,
-    });
+    const client = new GoogleGenerativeAI(apiKey);
+    const model = client.getGenerativeModel({ model: VISION_MODEL });
 
-    const completion = await groq.chat.completions.create({
-      model: VISION_MODEL,
+    const generationConfig = {
+      temperature: 0.1,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 2048,
+      responseMimeType: "application/json",
+    };
 
-      messages: [
+    const response = await model.generateContent({
+      contents: [
         {
           role: "user",
-          content: [
-            { 
-              type: "text",
+          parts: [
+            {
               text: ANALYSIS_PROMPT,
             },
             {
-              type: "image_url",
-              image_url: {
-                url: `data:${mimeType};base64,${imageBase64}`,
+              inlineData: {
+                mimeType,
+                data: imageBase64,
               },
             },
           ],
         },
       ],
+      generationConfig,
+    });
 
-      temperature: 0.1,
-      max_tokens: 2048,
-
-      response_format: {
-        type: "json_object",
-      },
-      });
-
-    const rawContent = completion.choices[0]?.message?.content;
+    const rawContent = response.response.text();
 
     if (!rawContent) {
-      console.error("[analyze] Empty response from Groq");
+      console.error("[analyze] Empty response from Gemini");
 
       return NextResponse.json(
         {
@@ -166,7 +169,7 @@ export async function POST(
       );
     }
 
-    console.log("[analyze] Groq response:", rawContent);
+    console.log("[analyze] Gemini response:", rawContent);
 
     let parsed: unknown;
 
@@ -199,44 +202,47 @@ export async function POST(
     const error = err as Error & {
       status?: number;
       code?: string;
+      message?: string;
     };
 
-    console.error("[analyze] Groq API error:", error);
+    console.error("[analyze] Gemini API error:", error);
 
-    if (error.status === 401 || error.message?.includes("401")) {
+    const errorMessage = error.message || "Unknown error";
+
+    if (error.status === 401 || errorMessage.includes("401") || errorMessage.includes("API key")) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Invalid API key. Please check your GROQ_API_KEY configuration.",
+            "Invalid API key. Please check your GEMINI_API_KEY configuration.",
         },
         { status: 401 }
       );
     }
 
-    if (error.status === 400 || error.message?.includes("400")) {
+    if (error.status === 400 || errorMessage.includes("400")) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The AI model rejected the request. Check the image size or model configuration.",
+            "The AI model rejected the request. Check the image size or format.",
         },
         { status: 400 }
       );
     }
 
-    if (error.status === 404 || error.message?.includes("404")) {
+    if (error.status === 404 || errorMessage.includes("404")) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "The selected Groq vision model is unavailable. Check GROQ_VISION_MODEL.",
+            "The selected Gemini model is unavailable.",
         },
         { status: 404 }
       );
     }
 
-    if (error.status === 429 || error.message?.includes("429")) {
+    if (error.status === 429 || errorMessage.includes("429") || errorMessage.includes("quota")) {
       return NextResponse.json(
         {
           success: false,
@@ -250,9 +256,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error: `AI analysis failed: ${
-          error.message ?? "Unknown error"
-        }. Please try again.`,
+        error: `AI analysis failed: ${errorMessage}. Please try again.`,
       },
       { status: 500 }
     );
