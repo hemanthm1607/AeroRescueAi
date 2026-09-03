@@ -187,6 +187,22 @@ function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, on
   return (
     <div className="flex flex-col gap-4">
 
+      {/* ── ANALYZED IMAGE DISPLAY ── */}
+      {previewUrl ? (
+        <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt="Analyzed flood scene"
+            className="w-full max-h-96 object-contain bg-slate-950"
+          />
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 p-6 text-center">
+          <p className="text-sm text-slate-500">No image available</p>
+        </div>
+      )}
+
       {/* ── INCIDENT INFO HEADER ── */}
       {result.incidentId && (
         <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 flex items-center justify-between">
