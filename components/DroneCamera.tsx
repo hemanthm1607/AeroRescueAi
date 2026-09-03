@@ -30,17 +30,21 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   const streamRef = useRef<MediaStream | null>(null);
   const autoLoopIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isAutoAnalyzingRef = useRef(false);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
   const [isAutoMode, setIsAutoMode] = useState(false);
+  const [countdown, setCountdown] = useState(10);
+  const [lastAnalysisTime, setLastAnalysisTime] = useState<string | null>(null);
 
   // Clean up stream and auto-loop on unmount
   useEffect(() => {
     return () => {
       if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       stopStream();
     };
   }, []);
@@ -60,6 +64,8 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     if (!videoRef.current || !canvasRef.current) return;
 
     isAutoAnalyzingRef.current = true;
+    setCountdown(10); // Reset countdown when analysis starts
+    setLastAnalysisTime("Just now");
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -80,6 +86,20 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     onAnalyze(base64, mime, dataUrl);
 
     isAutoAnalyzingRef.current = false;
+  }
+
+  function startCountdown() {
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    setCountdown(10);
+    countdownIntervalRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+          return 10;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   }
 
   const startCamera = useCallback(async () => {
@@ -122,9 +142,14 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
           ) {
             setCameraState("active");
             setIsAutoMode(true);
+            setLastAnalysisTime(null);
+            setCountdown(10);
 
             // Capture and analyze immediately
             captureAndAnalyzeFrame();
+
+            // Start countdown timer
+            startCountdown();
 
             // Start automatic 10-second analysis loop
             if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
@@ -166,11 +191,17 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
       clearInterval(autoLoopIntervalRef.current);
       autoLoopIntervalRef.current = null;
     }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
     stopStream();
     setCameraState("idle");
     setCapturedFrame(null);
     setErrorMessage("");
     setIsAutoMode(false);
+    setCountdown(10);
+    setLastAnalysisTime(null);
   }
 
   function captureFrame() {
@@ -347,6 +378,34 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
           </div>
         )}
       </div>
+
+      {/* Auto mode status indicator */}
+      {isAutoMode && cameraState === "active" && (
+        <div className="rounded-xl border border-green-500/25 bg-gradient-to-b from-green-950/20 to-green-950/10 p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+            </div>
+            <span className="text-sm font-bold text-green-300">DRONE CAMERA ACTIVE</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="rounded-lg bg-slate-900/40 px-3 py-2">
+              <p className="text-slate-400 uppercase tracking-wide">Automatic Analysis</p>
+              <p className="text-green-300 font-semibold mt-1">ON</p>
+            </div>
+            <div className="rounded-lg bg-slate-900/40 px-3 py-2">
+              <p className="text-slate-400 uppercase tracking-wide">Next Analysis</p>
+              <p className="text-blue-300 font-mono font-semibold mt-1">{countdown}s</p>
+            </div>
+            <div className="col-span-2 rounded-lg bg-slate-900/40 px-3 py-2">
+              <p className="text-slate-400 uppercase tracking-wide">Last Analysis</p>
+              <p className="text-slate-300 font-semibold mt-1">
+                {lastAnalysisTime || "—"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex flex-col gap-2">
