@@ -59,6 +59,7 @@ export default function DronePage() {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const ablyRef = useRef<Realtime | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const gpsWatcherRef = useRef<number | null>(null);
 
   // ── Connect to Ably on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -104,10 +105,11 @@ export default function DronePage() {
       });
     }, 5_000);
 
-    // Periodic GPS location updates (if available)
-    const locationId = setInterval(() => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
+    // Start GPS watcher immediately on mount
+    const startGPSWatch = () => {
+      if (navigator.geolocation && !gpsWatcherRef.current) {
+        console.log("[DronePage] Starting GPS watch");
+        gpsWatcherRef.current = navigator.geolocation.watchPosition(
           (position) => {
             const locPayload = {
               latitude: position.coords.latitude,
@@ -118,17 +120,27 @@ export default function DronePage() {
               console.error("[DronePage] Location publish failed:", err);
             });
           },
-          () => {
-            // Silent fail - location unavailable
+          (error) => {
+            console.log("[DronePage] GPS error:", error.message);
+            // Continue trying - user may grant permission later
           },
-          { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 }
+          {
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 5000, // Allow up to 5s old position
+          }
         );
       }
-    }, 10_000); // Every 10 seconds
+    };
+
+    startGPSWatch();
 
     return () => {
       clearInterval(hbId);
-      clearInterval(locationId);
+      if (gpsWatcherRef.current) {
+        navigator.geolocation.clearWatch(gpsWatcherRef.current);
+        gpsWatcherRef.current = null;
+      }
       ch.publish(EVENT_HEARTBEAT, { online: false }).catch(() => {});
       ably.close();
     };

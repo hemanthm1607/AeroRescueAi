@@ -153,16 +153,30 @@ interface ResultCardsProps {
   onToggleHazards: () => void;
 }
 
-// Deterministic rescue team count — not calculated by AI
-function rescueTeamsRequired(people: number): number {
-  if (people <= 0) return 0;
-  if (people <= 5) return 1;
-  if (people <= 10) return 3;
+// Deterministic rescue team count — based on actual disaster context
+function rescueTeamsRequired(result: AnalysisResult): number {
+  // No people = no rescue teams needed
+  if (result.peopleDetected <= 0) return 0;
+  
+  // Check if this is an actual disaster/emergency situation
+  const isDisaster = 
+    result.rescuePriority === "HIGH" || 
+    result.rescuePriority === "CRITICAL" ||
+    result.floodSeverity === "HIGH" ||
+    result.floodSeverity === "CRITICAL" ||
+    (result.hazards && result.hazards.length > 0);
+  
+  // Normal indoor/non-disaster scene with people = 0 teams
+  if (!isDisaster) return 0;
+  
+  // Actual disaster: calculate based on people count
+  if (result.peopleDetected <= 5) return 1;
+  if (result.peopleDetected <= 10) return 3;
   return 5;
 }
 
 function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, onToggleHazards }: ResultCardsProps) {
-  const teams = rescueTeamsRequired(result.peopleDetected);
+  const teams = rescueTeamsRequired(result);
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async () => {
