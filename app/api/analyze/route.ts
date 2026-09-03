@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { validateAnalysisResult } from "@/lib/validate";
 import type { ApiAnalyzeResponse } from "@/types";
 
-const VISION_MODEL = "gemini-2.5-flash";
+const VISION_MODEL = "gemini-3.1-flash-lite";
 
 const ANALYSIS_PROMPT = `
 Analyze this flood/disaster image for rescue operations.
