@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Zap, AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { AnalysisHistoryEntry } from "@/types";
+import { Zap, AlertTriangle, CheckCircle2, Users, MapPin, Clock } from "lucide-react";
+import type { AnalysisHistoryEntry, RescueTeam } from "@/types";
 import { getSeverityBg, getSeverityColor, cn } from "@/lib/utils";
 import Button from "@/components/ui/Button";
+
+const RESCUE_TEAMS: RescueTeam[] = ["Team 01", "Team 02", "Team 03", "Team 04"];
 
 interface ModuleResourcesProps {
   entries: AnalysisHistoryEntry[];
@@ -13,6 +15,37 @@ interface ModuleResourcesProps {
 export default function ModuleResources({ entries }: ModuleResourcesProps) {
   const [availableTeams, setAvailableTeams] = useState(10);
   const [customAmounts, setCustomAmounts] = useState<Record<string, number>>({});
+
+  // Calculate team statuses based on incident assignments
+  const teamStatuses: Record<RescueTeam, { status: string; incidentId?: string; priority?: string; peopleCount?: number }> = {
+    "Team 01": { status: "AVAILABLE" },
+    "Team 02": { status: "AVAILABLE" },
+    "Team 03": { status: "AVAILABLE" },
+    "Team 04": { status: "AVAILABLE" },
+  };
+
+  // Update team statuses based on assigned incidents
+  entries.forEach((entry) => {
+    if (entry.assignedTeam && entry.status && entry.status !== "NEW") {
+      const statusMap: Record<string, string> = {
+        ASSIGNED: "ASSIGNED",
+        EN_ROUTE: "EN_ROUTE",
+        RESCUED: "COMPLETED",
+      };
+      teamStatuses[entry.assignedTeam] = {
+        status: statusMap[entry.status] || "ASSIGNED",
+        incidentId: entry.incidentId,
+        priority: entry.result.rescuePriority,
+        peopleCount: entry.result.peopleDetected,
+      };
+    }
+  });
+
+  // Count team statuses
+  const availableCount = RESCUE_TEAMS.filter((team) => teamStatuses[team].status === "AVAILABLE").length;
+  const assignedCount = RESCUE_TEAMS.filter((team) => teamStatuses[team].status === "ASSIGNED").length;
+  const enRouteCount = RESCUE_TEAMS.filter((team) => teamStatuses[team].status === "EN_ROUTE").length;
+  const completedCount = RESCUE_TEAMS.filter((team) => teamStatuses[team].status === "COMPLETED").length;
 
   // Sort by priority: CRITICAL > HIGH > MEDIUM > LOW
   const priorityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -55,6 +88,12 @@ export default function ModuleResources({ entries }: ModuleResourcesProps) {
 
   const criticalCount = allocations.filter((a) => a.incident.result.rescuePriority === "CRITICAL").length;
   const highCount = allocations.filter((a) => a.incident.result.rescuePriority === "HIGH").length;
+
+  // Find recommended team for unassigned high/critical incidents
+  const unassignedCritical = entries.filter(
+    (e) => (e.result.rescuePriority === "CRITICAL" || e.result.rescuePriority === "HIGH") && !e.assignedTeam
+  );
+  const recommendedTeam = availableCount > 0 ? RESCUE_TEAMS.find((team) => teamStatuses[team].status === "AVAILABLE") : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -108,6 +147,99 @@ export default function ModuleResources({ entries }: ModuleResourcesProps) {
           <p className="text-xs text-slate-400 mt-1">incident{criticalCount === 1 ? "" : "s"}</p>
         </div>
       </div>
+
+      {/* Team Status Overview */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Team Status Overview</p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-slate-400">Available</span>
+              <span className="text-2xl font-black text-green-300">{availableCount}</span>
+            </div>
+            <p className="text-xs text-slate-600">Ready for deployment</p>
+          </div>
+
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-slate-400">Assigned</span>
+              <span className="text-2xl font-black text-blue-300">{assignedCount}</span>
+            </div>
+            <p className="text-xs text-slate-600">Team dispatched</p>
+          </div>
+
+          <div className="rounded-lg border border-orange-500/20 bg-orange-500/10 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-slate-400">En Route</span>
+              <span className="text-2xl font-black text-orange-300">{enRouteCount}</span>
+            </div>
+            <p className="text-xs text-slate-600">Traveling to location</p>
+          </div>
+
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-slate-400">Completed</span>
+              <span className="text-2xl font-black text-emerald-300">{completedCount}</span>
+            </div>
+            <p className="text-xs text-slate-600">Rescue complete</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Individual Team Status */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Individual Teams</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {RESCUE_TEAMS.map((team) => {
+            const teamData = teamStatuses[team];
+            const statusColor = {
+              AVAILABLE: "bg-green-500/15 border-green-500/30 text-green-300",
+              ASSIGNED: "bg-blue-500/15 border-blue-500/30 text-blue-300",
+              EN_ROUTE: "bg-orange-500/15 border-orange-500/30 text-orange-300",
+              COMPLETED: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300",
+            }[teamData.status];
+
+            return (
+              <div key={team} className={cn("rounded-lg border p-3", statusColor)}>
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-semibold text-sm">{team}</p>
+                    <p className="text-xs text-slate-400">{teamData.status}</p>
+                  </div>
+                  <div className={cn("w-3 h-3 rounded-full mt-0.5", {
+                    "bg-green-400": teamData.status === "AVAILABLE",
+                    "bg-blue-400": teamData.status === "ASSIGNED",
+                    "bg-orange-400": teamData.status === "EN_ROUTE",
+                    "bg-emerald-400": teamData.status === "COMPLETED",
+                  })} />
+                </div>
+                {teamData.incidentId && (
+                  <div className="text-xs space-y-1">
+                    <p className="text-slate-300">
+                      <span className="text-slate-500">Incident:</span> {teamData.incidentId}
+                    </p>
+                    {teamData.priority && (
+                      <p className="text-slate-300">
+                        <span className="text-slate-500">Priority:</span> {teamData.priority}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Recommendation Banner */}
+      {unassignedCritical.length > 0 && recommendedTeam && (
+        <div className="rounded-lg border-2 border-yellow-500/30 bg-yellow-500/10 p-4">
+          <p className="text-sm font-semibold text-yellow-300 mb-2">💡 Recommendation</p>
+          <p className="text-sm text-slate-200">
+            <span className="font-semibold">{unassignedCritical.length}</span> unassigned HIGH/CRITICAL incident{unassignedCritical.length !== 1 ? "s" : ""}. Consider assigning <span className="font-semibold text-blue-300">{recommendedTeam}</span> to help with response.
+          </p>
+        </div>
+      )}
 
       {/* Incidents */}
       {allocations.length === 0 ? (

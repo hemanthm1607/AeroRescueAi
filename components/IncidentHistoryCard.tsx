@@ -219,6 +219,41 @@ export default function IncidentHistoryCard({
               {result.summary}
             </p>
           </div>
+
+          {/* Hazards if any */}
+          {result.hazards.length > 0 && (
+            <div className="mt-4 bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
+              <div className="text-xs text-slate-400 mb-2">Detected Hazards ({result.hazards.length})</div>
+              <div className="space-y-1">
+                {result.hazards.slice(0, 3).map((hazard, idx) => (
+                  <div key={idx} className="text-xs text-slate-300">
+                    <span className="font-semibold">{hazard.name}</span>
+                    <span className="text-slate-500"> • {hazard.severity}</span>
+                  </div>
+                ))}
+                {result.hazards.length > 3 && (
+                  <div className="text-xs text-slate-500">+{result.hazards.length - 3} more hazard{result.hazards.length - 3 !== 1 ? 's' : ''}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Recommendations if any */}
+          {result.recommendations.length > 0 && (
+            <div className="mt-4 bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+              <div className="text-xs text-slate-400 mb-2">Recommended Actions ({result.recommendations.length})</div>
+              <div className="space-y-1">
+                {result.recommendations.slice(0, 2).map((rec, idx) => (
+                  <div key={idx} className="text-xs text-slate-300">
+                    ✓ {rec}
+                  </div>
+                ))}
+                {result.recommendations.length > 2 && (
+                  <div className="text-xs text-slate-500">+{result.recommendations.length - 2} more recommendation{result.recommendations.length - 2 !== 1 ? 's' : ''}</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, X, Eye, MapPin, Users } from "lucide-react";
+import { AlertTriangle, X, Eye, MapPin, Users, Volume2, VolumeX } from "lucide-react";
 import type { EmergencyAlert, AnalysisHistoryEntry } from "@/types";
 import { getActiveAlerts, dismissAlert, getIncidents } from "@/lib/incidents";
 import { cn } from "@/lib/utils";
 import { formatCoordinates } from "@/lib/utils";
+import { playEmergencySiren, stopSiren, isSirenPlaying, enableAudioOnUserGesture } from "@/lib/audioAlert";
 
 interface EmergencyAlertBarProps {
   onViewIncident?: (incidentId: string) => void;
@@ -15,6 +16,8 @@ export default function EmergencyAlertBar({ onViewIncident }: EmergencyAlertBarP
   const [alerts, setAlerts] = useState<EmergencyAlert[]>([]);
   const [currentAlert, setCurrentAlert] = useState<EmergencyAlert | null>(null);
   const [incident, setIncident] = useState<AnalysisHistoryEntry | null>(null);
+  const [sirenPlaying, setSirenPlaying] = useState(false);
+  const [audioInitialized, setAudioInitialized] = useState(false);
 
   useEffect(() => {
     const loadAlerts = () => {
@@ -33,6 +36,7 @@ export default function EmergencyAlertBar({ onViewIncident }: EmergencyAlertBarP
       } else {
         setCurrentAlert(null);
         setIncident(null);
+        setSirenPlaying(false);
       }
     };
 
@@ -47,6 +51,8 @@ export default function EmergencyAlertBar({ onViewIncident }: EmergencyAlertBarP
   const handleDismiss = () => {
     if (currentAlert) {
       dismissAlert(currentAlert.id);
+      setSirenPlaying(false);
+      stopSiren();
       
       // Find the next alert
       const remaining = alerts.filter(a => a.id !== currentAlert.id);
@@ -69,6 +75,21 @@ export default function EmergencyAlertBar({ onViewIncident }: EmergencyAlertBarP
   const handleViewIncident = () => {
     if (currentAlert && onViewIncident) {
       onViewIncident(currentAlert.incidentId);
+    }
+  };
+
+  const handleToggleSiren = async () => {
+    if (!audioInitialized) {
+      enableAudioOnUserGesture();
+      setAudioInitialized(true);
+    }
+
+    if (sirenPlaying) {
+      stopSiren();
+      setSirenPlaying(false);
+    } else {
+      const success = await playEmergencySiren(3000);
+      setSirenPlaying(success);
     }
   };
 
@@ -105,12 +126,12 @@ export default function EmergencyAlertBar({ onViewIncident }: EmergencyAlertBarP
       colors.border
     )}>
       <div className="flex items-start gap-4">
-        {/* Alert Icon */}
+        {/* Alert Icon - with pulse animation */}
         <div className="flex-shrink-0 relative">
           <div className={cn("w-12 h-12 rounded-xl border-2 flex items-center justify-center", colors.border)}>
             <AlertTriangle className={cn("w-6 h-6", colors.icon)} />
           </div>
-          <div className={cn("absolute -top-1 -right-1 w-4 h-4 rounded-full animate-ping", colors.pulse)} />
+          <div className={cn("absolute -top-1 -right-1 w-4 h-4 rounded-full animate-pulse", colors.pulse)} />
         </div>
 
         {/* Alert Content */}
@@ -130,14 +151,35 @@ export default function EmergencyAlertBar({ onViewIncident }: EmergencyAlertBarP
               </p>
             </div>
             
-            {/* Dismiss Button */}
-            <button
-              onClick={handleDismiss}
-              className="p-1.5 rounded-lg bg-black/20 hover:bg-black/30 transition-colors"
-              title="Dismiss Alert"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              {/* Siren Toggle Button */}
+              <button
+                onClick={handleToggleSiren}
+                className={cn(
+                  "p-1.5 rounded-lg transition-colors",
+                  sirenPlaying
+                    ? "bg-red-500/30 hover:bg-red-500/40 text-red-300"
+                    : "bg-black/20 hover:bg-black/30 text-slate-400 hover:text-white"
+                )}
+                title={sirenPlaying ? "Mute Siren" : "Play Siren"}
+              >
+                {sirenPlaying ? (
+                  <Volume2 className="w-4 h-4 animate-pulse" />
+                ) : (
+                  <VolumeX className="w-4 h-4" />
+                )}
+              </button>
+              
+              {/* Dismiss Button */}
+              <button
+                onClick={handleDismiss}
+                className="p-1.5 rounded-lg bg-black/20 hover:bg-black/30 transition-colors"
+                title="Dismiss Alert"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Incident Details */}

@@ -158,6 +158,58 @@ export default function ModuleIncidentStats({ entries }: ModuleIncidentStatsProp
         </div>
       </div>
 
+      {/* Incident Status Summary */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Incident Status</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {[
+            { label: "New", count: entries.filter(e => e.status === "NEW").length, color: "slate" },
+            { label: "Assigned", count: entries.filter(e => e.status === "ASSIGNED").length, color: "blue" },
+            { label: "En Route", count: entries.filter(e => e.status === "EN_ROUTE").length, color: "orange" },
+            { label: "Rescued", count: entries.filter(e => e.status === "RESCUED").length, color: "green" },
+          ].map((item) => {
+            const colorMap = {
+              slate: "bg-slate-500/10 border-slate-500/20 text-slate-300",
+              blue: "bg-blue-500/10 border-blue-500/20 text-blue-300",
+              orange: "bg-orange-500/10 border-orange-500/20 text-orange-300",
+              green: "bg-green-500/10 border-green-500/20 text-green-300",
+            };
+            return (
+              <div key={item.label} className={cn("rounded-lg border p-3", colorMap[item.color as keyof typeof colorMap])}>
+                <p className="text-xs text-slate-500 mb-1">{item.label}</p>
+                <p className="text-2xl font-black">{item.count}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Team Coverage */}
+      <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Team Coverage</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {[
+            { label: "Assigned", count: entries.filter(e => e.assignedTeam).length, color: "blue" },
+            { label: "Unassigned", count: entries.filter(e => !e.assignedTeam).length, color: "slate" },
+            { label: "High/Critical", count: entries.filter(e => (e.result.rescuePriority === "HIGH" || e.result.rescuePriority === "CRITICAL")).length, color: "red" },
+            { label: "With Location", count: entries.filter(e => e.latitude !== undefined && e.longitude !== undefined).length, color: "green" },
+          ].map((item) => {
+            const colorMap = {
+              slate: "bg-slate-500/10 border-slate-500/20 text-slate-300",
+              blue: "bg-blue-500/10 border-blue-500/20 text-blue-300",
+              red: "bg-red-500/10 border-red-500/20 text-red-300",
+              green: "bg-green-500/10 border-green-500/20 text-green-300",
+            };
+            return (
+              <div key={item.label} className={cn("rounded-lg border p-3", colorMap[item.color as keyof typeof colorMap])}>
+                <p className="text-xs text-slate-500 mb-1">{item.label}</p>
+                <p className="text-2xl font-black">{item.count}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Info */}
       <div className="rounded-lg border border-slate-700/40 bg-slate-900/50 p-4">
         <p className="text-xs text-slate-400 leading-relaxed">
