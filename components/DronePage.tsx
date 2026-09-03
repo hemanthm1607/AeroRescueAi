@@ -74,38 +74,6 @@ export default function DronePage() {
     const ably = new Realtime({ key, autoConnect: true });
     ablyRef.current = ably;
 
-    ably.connection.on("connected", () => {
-      console.log("[DronePage] Ably connected");
-      setConnStatus("connected");
-      setStatusMessage("");
-      // Publish initial heartbeat AFTER connected is established
-      ch.publish(EVENT_HEARTBEAT, { online: true }).catch((err) => {
-        console.error("[DronePage] Initial heartbeat publish failed:", err);
-      });
-    });
-
-    ably.connection.on("disconnected", () => {
-      console.log("[DronePage] Ably disconnected");
-      setConnStatus("disconnected");
-    });
-
-    ably.connection.on("failed", (stateChange) => {
-      console.error("[DronePage] Ably connection failed:", stateChange.reason?.message);
-      setConnStatus("error");
-      setStatusMessage(stateChange.reason?.message ?? "Connection failed.");
-    });
-
-    const ch = ably.channels.get(DRONE_CHANNEL);
-    channelRef.current = ch;
-
-    // Periodic heartbeat so laptop knows phone is still connected
-    const hbId = setInterval(() => {
-      ch.publish(EVENT_HEARTBEAT, { online: true }).catch((err) => {
-        console.error("[DronePage] Heartbeat publish failed:", err);
-      });
-    }, 5_000);
-
-    // Start GPS watcher immediately on mount
     const startGPSWatch = () => {
       if (navigator.geolocation && !gpsWatcherRef.current) {
         console.log("[DronePage] Starting GPS watch");
@@ -116,9 +84,12 @@ export default function DronePage() {
               longitude: position.coords.longitude,
               timestamp: new Date().toISOString(),
             };
-            ch.publish(EVENT_LOCATION, locPayload).catch((err) => {
-              console.error("[DronePage] Location publish failed:", err);
-            });
+            const ch = channelRef.current;
+            if (ch) {
+              ch.publish(EVENT_LOCATION, locPayload).catch((err) => {
+                console.error("[DronePage] Location publish failed:", err);
+              });
+            }
           },
           (error) => {
             console.log("[DronePage] GPS error:", error.message);
@@ -133,7 +104,43 @@ export default function DronePage() {
       }
     };
 
-    startGPSWatch();
+    ably.connection.on("connected", () => {
+      console.log("[DronePage] Ably connected");
+      setConnStatus("connected");
+      setStatusMessage("");
+      
+      const ch = ably.channels.get(DRONE_CHANNEL);
+      channelRef.current = ch;
+      
+      // Publish initial heartbeat AFTER connected is established
+      ch.publish(EVENT_HEARTBEAT, { online: true }).catch((err) => {
+        console.error("[DronePage] Initial heartbeat publish failed:", err);
+      });
+      
+      // Start GPS watch only after Ably is connected
+      startGPSWatch();
+    });
+
+    ably.connection.on("disconnected", () => {
+      console.log("[DronePage] Ably disconnected");
+      setConnStatus("disconnected");
+    });
+
+    ably.connection.on("failed", (stateChange) => {
+      console.error("[DronePage] Ably connection failed:", stateChange.reason?.message);
+      setConnStatus("error");
+      setStatusMessage(stateChange.reason?.message ?? "Connection failed.");
+    });
+
+    // Periodic heartbeat so laptop knows phone is still connected
+    const hbId = setInterval(() => {
+      const ch = channelRef.current;
+      if (ch) {
+        ch.publish(EVENT_HEARTBEAT, { online: true }).catch((err) => {
+          console.error("[DronePage] Heartbeat publish failed:", err);
+        });
+      }
+    }, 5_000);
 
     return () => {
       clearInterval(hbId);
@@ -141,7 +148,10 @@ export default function DronePage() {
         navigator.geolocation.clearWatch(gpsWatcherRef.current);
         gpsWatcherRef.current = null;
       }
-      ch.publish(EVENT_HEARTBEAT, { online: false }).catch(() => {});
+      const ch = channelRef.current;
+      if (ch) {
+        ch.publish(EVENT_HEARTBEAT, { online: false }).catch(() => {});
+      }
       ably.close();
     };
   }, []);

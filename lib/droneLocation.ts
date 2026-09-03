@@ -38,8 +38,14 @@ export function isDroneLocationRecent(): boolean {
   const location = getCurrentDroneLocation();
   if (!location) return false;
   
-  const now = Date.now();
+  // Validate timestamp
   const locationTime = new Date(location.timestamp).getTime();
+  if (isNaN(locationTime)) {
+    console.warn("Invalid location timestamp:", location.timestamp);
+    return false;
+  }
+  
+  const now = Date.now();
   const ageMs = now - locationTime;
   
   return ageMs < 30000; // 30 seconds

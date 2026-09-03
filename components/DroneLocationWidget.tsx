@@ -1,14 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { MapPin, Navigation, Clock } from "lucide-react";
-import { Realtime } from "ably";
-import type { Message } from "ably";
 import type { DroneLocationUpdate } from "@/types";
-import { getCurrentDroneLocation, isDroneLocationRecent, updateDroneLocation } from "@/lib/droneLocation";
+import { getCurrentDroneLocation, isDroneLocationRecent } from "@/lib/droneLocation";
 import { formatCoordinates } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { DRONE_CHANNEL, EVENT_LOCATION } from "@/lib/ablyConfig";
 
 interface DroneLocationWidgetProps {
   className?: string;
@@ -17,7 +14,6 @@ interface DroneLocationWidgetProps {
 export default function DroneLocationWidget({ className }: DroneLocationWidgetProps) {
   const [location, setLocation] = useState<DroneLocationUpdate | null>(null);
   const [isRecent, setIsRecent] = useState(false);
-  const ablyRef = useRef<Realtime | null>(null);
 
   useEffect(() => {
     // Load initial location from storage
@@ -31,63 +27,17 @@ export default function DroneLocationWidget({ className }: DroneLocationWidgetPr
 
     updateLocation();
     
-    // Subscribe to Ably location updates in real-time
-    const key = process.env.NEXT_PUBLIC_ABLY_KEY;
-    if (!key) {
-      console.error("[DroneLocationWidget] NEXT_PUBLIC_ABLY_KEY is not set");
-      return;
-    }
-
-    const ably = new Realtime({ key, autoConnect: true });
-    ablyRef.current = ably;
-
-    ably.connection.on("connected", () => {
-      console.log("[DroneLocationWidget] Ably connected");
-      const ch = ably.channels.get(DRONE_CHANNEL);
-      
-      // Listen for location updates from drone
-      const locationHandler = (msg: Message) => {
-        const payload = msg.data as { latitude?: number; longitude?: number; timestamp?: string };
-        if (payload.latitude !== undefined && payload.longitude !== undefined) {
-          const locUpdate: DroneLocationUpdate = {
-            latitude: payload.latitude,
-            longitude: payload.longitude,
-            timestamp: payload.timestamp || new Date().toISOString()
-          };
-          // Update storage and state
-          updateDroneLocation(locUpdate);
-          setLocation(locUpdate);
-          setIsRecent(true);
-          
-          // Mark as stale after 30 seconds
-          const timer = setTimeout(() => {
-            const stored = getCurrentDroneLocation();
-            if (stored?.timestamp === locUpdate.timestamp) {
-              setIsRecent(isDroneLocationRecent());
-            }
-          }, 30000);
-          
-          return () => clearTimeout(timer);
-        }
-      };
-      
-      ch.subscribe(EVENT_LOCATION, locationHandler);
-    });
-
-    // Fallback: poll storage every 5 seconds for updates
-    const interval = setInterval(updateLocation, 5000);
+    // Poll storage every 2 seconds for updates from DroneStatusWidget
+    const interval = setInterval(updateLocation, 2000);
     
-    return () => {
-      clearInterval(interval);
-      if (ablyRef.current) {
-        ablyRef.current.close();
-      }
-    };
+    return () => clearInterval(interval);
   }, []);
 
   const formatTimeAgo = (timestamp: string) => {
     const now = Date.now();
     const locationTime = new Date(timestamp).getTime();
+    if (isNaN(locationTime)) return "Invalid";
+    
     const ageMs = now - locationTime;
     const ageMinutes = Math.floor(ageMs / 60000);
     
