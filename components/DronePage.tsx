@@ -31,6 +31,8 @@ interface DroneAnalysisMessage {
   /** data: URL of the captured frame (resized to ≤ 200px wide for preview) */
   previewDataUrl: string;
   capturedAt: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 /** Resize a base64/dataURL to max 200px wide, returns a new data URL */
@@ -114,6 +116,8 @@ export default function DronePage() {
     base64: string,
     mimeType: string,
     previewDataUrl: string,
+    latitude?: number,
+    longitude?: number,
   ) => {
     setConnStatus("analyzing");
     setStatusMessage("Sending to AI…");
@@ -163,6 +167,8 @@ export default function DronePage() {
       result,
       previewDataUrl: smallPreview,
       capturedAt: new Date().toISOString(),
+      latitude,
+      longitude,
     };
 
     try {

@@ -4,8 +4,9 @@ import { useState, useCallback, useEffect } from "react";
 import type { User, AnalysisResult, AnalysisHistoryEntry, InputMode } from "@/types";
 import type { ErrorType } from "@/components/ErrorState";
 import type { ModuleId } from "@/components/Sidebar";
-import { generateId, formatTimestamp } from "@/lib/utils";
+import { generateId, formatTimestamp, generateIncidentId } from "@/lib/utils";
 import { addHistoryEntry, getHistory } from "@/lib/history";
+import { requestGeoLocation } from "@/lib/geo";
 
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
@@ -13,6 +14,9 @@ import ModuleDetection from "@/components/modules/ModuleDetection";
 import ModuleBattery from "@/components/modules/ModuleBattery";
 import ModuleHistory from "@/components/modules/ModuleHistory";
 import ModuleOurApp from "@/components/modules/ModuleOurApp";
+import ModuleIncidentMap from "@/components/modules/ModuleIncidentMap";
+import ModuleResources from "@/components/modules/ModuleResources";
+import ModuleIncidentStats from "@/components/modules/ModuleIncidentStats";
 
 interface DashboardProps {
   user: User;
@@ -24,6 +28,9 @@ interface CurrentAnalysis {
   previewUrl: string;
   inputMode: InputMode;
   timestamp: string;
+  incidentId?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export default function Dashboard({ user, onLogout }: DashboardProps) {
@@ -47,6 +54,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       setCurrentAnalysis(null);
 
       try {
+        // Get GPS location if available
+        const geoLocation = await requestGeoLocation();
+
         const res = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -71,14 +81,35 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         }
 
         const timestamp = new Date().toISOString();
-        setCurrentAnalysis({ result: data.result, previewUrl, inputMode: mode, timestamp: formatTimestamp(timestamp) });
+        const incidentId = generateIncidentId();
+        const analysisResult = data.result as AnalysisResult;
+
+        // Attach location and incident ID to result
+        if (geoLocation) {
+          analysisResult.latitude = geoLocation.latitude;
+          analysisResult.longitude = geoLocation.longitude;
+        }
+        analysisResult.incidentId = incidentId;
+
+        setCurrentAnalysis({
+          result: analysisResult,
+          previewUrl,
+          inputMode: mode,
+          timestamp: formatTimestamp(timestamp),
+          incidentId,
+          latitude: geoLocation?.latitude,
+          longitude: geoLocation?.longitude,
+        });
 
         const entry: AnalysisHistoryEntry = {
           id: generateId(),
+          incidentId,
           timestamp,
           imageThumbnail: previewUrl,
-          result: data.result,
+          result: analysisResult,
           inputMode: mode,
+          latitude: geoLocation?.latitude,
+          longitude: geoLocation?.longitude,
         };
         addHistoryEntry(entry);
         setHistory(getHistory());
@@ -101,18 +132,44 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     result: AnalysisResult,
     previewDataUrl: string,
     capturedAt: string,
+    latitude?: number,
+    longitude?: number,
   ) => {
     const timestamp = new Date(capturedAt).toISOString();
     const formatted = formatTimestamp(timestamp);
-    setCurrentAnalysis({ result, previewUrl: previewDataUrl, inputMode: "drone", timestamp: formatted });
+    const incidentId = result.incidentId || generateIncidentId();
+
+    // Attach incident ID if not already present
+    if (!result.incidentId) {
+      result.incidentId = incidentId;
+    }
+    if (latitude !== undefined) {
+      result.latitude = latitude;
+    }
+    if (longitude !== undefined) {
+      result.longitude = longitude;
+    }
+
+    setCurrentAnalysis({
+      result,
+      previewUrl: previewDataUrl,
+      inputMode: "drone",
+      timestamp: formatted,
+      incidentId,
+      latitude,
+      longitude,
+    });
     setAnalysisError(null);
 
     const entry: AnalysisHistoryEntry = {
       id: generateId(),
+      incidentId,
       timestamp,
       imageThumbnail: previewDataUrl,
       result,
       inputMode: "drone",
+      latitude,
+      longitude,
     };
     addHistoryEntry(entry);
     setHistory(getHistory());
@@ -165,7 +222,22 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <ModuleHistory entries={history} onClear={() => setHistory([])} />
             )}
 
-            {/* MODULE 4 — Our App */}
+            {/* MODULE 4 — Incident Map */}
+            {activeModule === "map" && (
+              <ModuleIncidentMap entries={history} />
+            )}
+
+            {/* MODULE 5 — Resource Allocation */}
+            {activeModule === "resources" && (
+              <ModuleResources entries={history} />
+            )}
+
+            {/* MODULE 6 — Incident Statistics */}
+            {activeModule === "stats" && (
+              <ModuleIncidentStats entries={history} />
+            )}
+
+            {/* MODULE 7 — Our App */}
             {activeModule === "ourapp" && <ModuleOurApp />}
 
           </div>

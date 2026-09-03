@@ -64,7 +64,13 @@ export function validateAnalysisResult(data: unknown): AnalysisResult {
       ? d.disasterType.trim()
       : "Unknown";
 
-  return {
+  // Optional new fields
+  const incidentId = typeof d.incidentId === "string" ? d.incidentId : undefined;
+  const latitude = typeof d.latitude === "number" ? d.latitude : undefined;
+  const longitude = typeof d.longitude === "number" ? d.longitude : undefined;
+  const locationName = typeof d.locationName === "string" ? d.locationName : undefined;
+
+  const result: AnalysisResult = {
     peopleDetected,
     urgentPeople,
     floodSeverity,
@@ -75,4 +81,12 @@ export function validateAnalysisResult(data: unknown): AnalysisResult {
     summary,
     disasterType,
   };
+
+  // Add optional fields if present
+  if (incidentId) result.incidentId = incidentId;
+  if (latitude !== undefined) result.latitude = latitude;
+  if (longitude !== undefined) result.longitude = longitude;
+  if (locationName) result.locationName = locationName;
+
+  return result;
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Shield, ScanSearch, BatteryCharging, History, Info, Menu, X, ChevronRight } from "lucide-react";
+import { Shield, ScanSearch, BatteryCharging, History, Info, Menu, X, ChevronRight, Map, Zap, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ModuleId = "detection" | "battery" | "history" | "ourapp";
+export type ModuleId = "detection" | "battery" | "history" | "map" | "resources" | "stats" | "ourapp";
 
 interface NavItem {
   id: ModuleId;
@@ -51,6 +51,39 @@ const NAV: NavItem[] = [
     activeBorder: "border-l-amber-500",
     activeText: "text-amber-300",
     activeIconColor: "text-amber-400",
+  },
+  {
+    id: "map",
+    label: "Incident Map",
+    sublabel: "Location Overview",
+    icon: Map,
+    accent: "red",
+    activeBg: "bg-red-500/10",
+    activeBorder: "border-l-red-500",
+    activeText: "text-red-300",
+    activeIconColor: "text-red-400",
+  },
+  {
+    id: "resources",
+    label: "Resources",
+    sublabel: "Rescue Allocation",
+    icon: Zap,
+    accent: "orange",
+    activeBg: "bg-orange-500/10",
+    activeBorder: "border-l-orange-500",
+    activeText: "text-orange-300",
+    activeIconColor: "text-orange-400",
+  },
+  {
+    id: "stats",
+    label: "Statistics",
+    sublabel: "Incident Trends",
+    icon: TrendingUp,
+    accent: "purple",
+    activeBg: "bg-purple-500/10",
+    activeBorder: "border-l-purple-500",
+    activeText: "text-purple-300",
+    activeIconColor: "text-purple-400",
   },
   {
     id: "ourapp",

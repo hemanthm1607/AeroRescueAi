@@ -66,6 +66,13 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+export function generateIncidentId(): string {
+  const date = new Date();
+  const dateStr = date.toISOString().slice(0, 10).replace(/-/g, "");
+  const randomStr = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `AR-${dateStr}-${randomStr}`;
+}
+
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

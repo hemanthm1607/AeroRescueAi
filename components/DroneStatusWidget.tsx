@@ -12,11 +12,13 @@ interface DroneAnalysisMessage {
   result: AnalysisResult;
   previewDataUrl: string;
   capturedAt: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface DroneStatusWidgetProps {
   /** Called when the phone has finished analysis and sent results */
-  onResultReceived: (result: AnalysisResult, previewDataUrl: string, capturedAt: string) => void;
+  onResultReceived: (result: AnalysisResult, previewDataUrl: string, capturedAt: string, latitude?: number, longitude?: number) => void;
   isAnalyzing: boolean;
 }
 
@@ -69,7 +71,7 @@ export default function DroneStatusWidget({ onResultReceived, isAnalyzing }: Dro
       // Always deliver the result regardless of isAnalyzing —
       // the laptop may have started its own analysis via upload; we still
       // want to surface the drone result.
-      onResultRef.current(payload.result, payload.previewDataUrl, payload.capturedAt);
+      onResultRef.current(payload.result, payload.previewDataUrl, payload.capturedAt, payload.latitude, payload.longitude);
     };
 
     ch.subscribe(EVENT_HEARTBEAT, heartbeatHandler);

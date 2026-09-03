@@ -16,14 +16,23 @@ export interface AnalysisResult {
   recommendations: string[];
   summary: string;
   disasterType: string;
+  // New fields for incident tracking and location
+  incidentId?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
 }
 
 export interface AnalysisHistoryEntry {
   id: string;
+  incidentId?: string;
   timestamp: string;
   imageThumbnail: string;
   result: AnalysisResult;
   inputMode: "upload" | "drone";
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
 }
 
 export interface User {

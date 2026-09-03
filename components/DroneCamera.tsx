@@ -14,11 +14,18 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { dataUrlToBase64, getMimeFromDataUrl } from "@/lib/utils";
+import { requestGeoLocation } from "@/lib/geo";
 import Button from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
 interface DroneCameraProps {
-  onAnalyze: (base64: string, mimeType: string, previewUrl: string) => void;
+  onAnalyze: (
+    base64: string,
+    mimeType: string,
+    previewUrl: string,
+    latitude?: number,
+    longitude?: number
+  ) => void;
   isAnalyzing: boolean;
 }
 
@@ -39,6 +46,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [countdown, setCountdown] = useState(10);
   const [lastAnalysisTime, setLastAnalysisTime] = useState<string | null>(null);
+  const [gpsLocation, setGpsLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Clean up stream and auto-loop on unmount
   useEffect(() => {
@@ -83,7 +91,15 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
 
     const base64 = dataUrlToBase64(dataUrl);
     const mime = getMimeFromDataUrl(dataUrl);
-    onAnalyze(base64, mime, dataUrl);
+    
+    // Pass GPS coordinates if available
+    onAnalyze(
+      base64,
+      mime,
+      dataUrl,
+      gpsLocation?.latitude,
+      gpsLocation?.longitude
+    );
 
     isAutoAnalyzingRef.current = false;
   }
@@ -116,6 +132,9 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     }
 
     try {
+      // Request GPS location in parallel with camera (non-blocking)
+      const geoPromise = requestGeoLocation(3000); // 3 second timeout
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode,
@@ -130,6 +149,16 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+
+        // Wait for GPS result in background (don't block camera startup)
+        geoPromise.then((location) => {
+          if (location) {
+            setGpsLocation({
+              latitude: location.latitude,
+              longitude: location.longitude,
+            });
+          }
+        });
 
         // Wait for video to have valid frame data before starting auto-loop
         const waitForVideoReady = () => {
@@ -202,6 +231,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     setIsAutoMode(false);
     setCountdown(10);
     setLastAnalysisTime(null);
+    setGpsLocation(null);
   }
 
   function captureFrame() {
@@ -241,7 +271,14 @@ export default function DroneCamera({ onAnalyze, isAnalyzing }: DroneCameraProps
     if (!capturedFrame) return;
     const base64 = dataUrlToBase64(capturedFrame);
     const mime = getMimeFromDataUrl(capturedFrame);
-    onAnalyze(base64, mime, capturedFrame);
+    // Pass GPS coordinates if available
+    onAnalyze(
+      base64,
+      mime,
+      capturedFrame,
+      gpsLocation?.latitude,
+      gpsLocation?.longitude
+    );
   }
 
   function toggleFacingMode() {

@@ -10,15 +10,20 @@ import {
   ChevronUp,
   Activity,
   ImageUp,
+  Download,
+  MapPin,
 } from "lucide-react";
-import type { AnalysisResult, InputMode } from "@/types";
+import type { AnalysisResult, InputMode, AnalysisHistoryEntry } from "@/types";
 import type { ErrorType } from "@/components/ErrorState";
-import { getSeverityBg, getSeverityColor, cn } from "@/lib/utils";
+import { getSeverityBg, getSeverityColor, cn, formatTimestamp } from "@/lib/utils";
+import { downloadJSON } from "@/lib/export";
+import { formatCoordinates } from "@/lib/geo";
 import ImageUploader from "@/components/ImageUploader";
 import DroneStatusWidget from "@/components/DroneStatusWidget";
 import LoadingState from "@/components/LoadingState";
 import ErrorState from "@/components/ErrorState";
 import { SeverityDot } from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import { useState } from "react";
 
 interface ModuleDetectionProps {
@@ -157,9 +162,62 @@ function rescueTeamsRequired(people: number): number {
 
 function ResultCards({ result, previewUrl, inputMode, timestamp, hazardsOpen, onToggleHazards }: ResultCardsProps) {
   const teams = rescueTeamsRequired(result.peopleDetected);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    try {
+      setIsExporting(true);
+      const entry: AnalysisHistoryEntry = {
+        id: result.incidentId || `analysis-${Date.now()}`,
+        incidentId: result.incidentId,
+        timestamp,
+        imageThumbnail: previewUrl,
+        result,
+        inputMode,
+        latitude: result.latitude,
+        longitude: result.longitude,
+        locationName: result.locationName,
+      };
+      downloadJSON(entry, `incident-${result.incidentId || "export"}.json`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* ── INCIDENT INFO HEADER ── */}
+      {result.incidentId && (
+        <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-purple-500/15">
+              <span className="text-xs font-bold text-purple-300">#</span>
+            </div>
+            <div className="flex flex-col min-w-0">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Incident ID</p>
+              <p className="text-sm font-mono text-purple-300 truncate">{result.incidentId}</p>
+            </div>
+          </div>
+          {(result.latitude !== undefined && result.longitude !== undefined) && (
+            <div className="flex items-center gap-1 text-xs text-slate-400">
+              <MapPin className="w-3.5 h-3.5 text-green-400" />
+              <span>{formatCoordinates(result.latitude, result.longitude)}</span>
+            </div>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExport}
+            disabled={isExporting}
+            loading={isExporting}
+            className="ml-2 shrink-0"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export
+          </Button>
+        </div>
+      )}
 
       {/* ── ROW 1: PEOPLE / RESCUE TEAMS / DISASTER TYPE ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
