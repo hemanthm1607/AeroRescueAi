@@ -19,7 +19,6 @@ const MODULE_LABELS: Record<ModuleId, { title: string; sub: string }> = {
   incidents: { title: "Incident Management", sub: "Track, assign teams, and manage rescue operations" },
   history:   { title: "Analysis History", sub: "Past flood scene analyses" },
   ourapp:    { title: "About AeroAiRescue", sub: "AI-Powered Disaster Response Platform" },
-  map:       { title: "Incident Map", sub: "GPS-tracked incidents with coordinates" },
   resources: { title: "Resource Allocation", sub: "Rescue team calculation & requirements" },
   stats:     { title: "Incident Statistics", sub: "Trends and disaster response analytics" },
 };

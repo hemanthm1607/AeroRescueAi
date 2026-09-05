@@ -16,7 +16,6 @@ import ModuleBattery from "@/components/modules/ModuleBattery";
 import ModuleIncidents from "@/components/modules/ModuleIncidents";
 import ModuleHistory from "@/components/modules/ModuleHistory";
 import ModuleOurApp from "@/components/modules/ModuleOurApp";
-import ModuleIncidentMap from "@/components/modules/ModuleIncidentMap";
 import ModuleResources from "@/components/modules/ModuleResources";
 import ModuleIncidentStats from "@/components/modules/ModuleIncidentStats";
 import DroneLocationWidget from "@/components/DroneLocationWidget";
@@ -257,22 +256,17 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               <ModuleHistory entries={history} onClear={() => setHistory([])} />
             )}
 
-            {/* MODULE 5 — Incident Map */}
-            {activeModule === "map" && (
-              <ModuleIncidentMap entries={history} />
-            )}
-
-            {/* MODULE 6 — Resource Allocation */}
+            {/* MODULE 5 — Resource Allocation */}
             {activeModule === "resources" && (
               <ModuleResources entries={history} />
             )}
 
-            {/* MODULE 7 — Incident Statistics */}
+            {/* MODULE 6 — Incident Statistics */}
             {activeModule === "stats" && (
               <ModuleIncidentStats entries={history} />
             )}
 
-            {/* MODULE 8 — Our App */}
+            {/* MODULE 7 — Our App */}
             {activeModule === "ourapp" && <ModuleOurApp />}
 
           </div>
