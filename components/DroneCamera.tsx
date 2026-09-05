@@ -28,12 +28,11 @@ interface DroneCameraProps {
   ) => void;
   isAnalyzing: boolean;
   onCameraStateChange?: (isActive: boolean) => void;
-  offlineMode?: boolean;
 }
 
 type CameraState = "idle" | "requesting" | "active" | "error" | "captured";
 
-export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChange, offlineMode }: DroneCameraProps) {
+export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChange }: DroneCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -338,14 +337,6 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Offline Mode Indicator - Small & Non-disruptive */}
-      {offlineMode && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
-          <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-          <span className="text-xs text-red-300 font-semibold">🔴 Offline Mode</span>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
