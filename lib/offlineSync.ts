@@ -211,12 +211,14 @@ export async function syncPendingCaptures(
 
   if (currentState.offlineState === "offline") {
     console.log("[offlineSync] Offline, cannot sync");
+    syncInProgressRef.value = false;
     return;
   }
 
   // Do not process if callback is not registered - captures remain pending for retry
   if (!analyzeCallback) {
     console.log("[offlineSync] Analyze callback not registered, deferring sync");
+    syncInProgressRef.value = false;
     return;
   }
 
