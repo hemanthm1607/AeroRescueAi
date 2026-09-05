@@ -16,6 +16,16 @@ import DroneCamera from "@/components/DroneCamera";
 import type { AnalysisResult, DroneTelemetry } from "@/types";
 import { DRONE_CHANNEL, EVENT_ANALYSIS, EVENT_HEARTBEAT, EVENT_LOCATION, EVENT_TELEMETRY } from "@/lib/ablyConfig";
 import { getLocationName } from "@/lib/geo";
+import {
+  initializeOfflineSync,
+  getOfflineSyncState,
+  subscribeToStateChanges,
+  storePendingCapture,
+  syncPendingCaptures,
+  updatePendingCount,
+  registerAnalyzeCallback,
+} from "@/lib/offlineSync";
+import { isIndexedDBAvailable } from "@/lib/offlineStorage";
 
 interface DroneLocationPayload {
   latitude: number;
@@ -31,7 +41,10 @@ type ConnStatus =
   | "analyzing"
   | "publishing"
   | "sent"
-  | "error";
+  | "error"
+  | "offline";
+
+type OfflineState = "online" | "offline";
 
 /** Payload sent over Ably to the laptop */
 interface DroneAnalysisMessage {
@@ -115,12 +128,18 @@ export default function DronePage() {
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [lastSentAt, setLastSentAt] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [offlineState, setOfflineState] = useState<OfflineState>("online");
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncInProgress, setSyncInProgress] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const ablyRef = useRef<Realtime | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const gpsWatcherRef = useRef<number | null>(null);
   const cameraActiveRef = useRef(false);
   const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentGpsRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const offlineSyncCleanupRef = useRef<(() => void) | undefined>(undefined);
+  const unsubscribeRef = useRef<(() => void) | undefined>(undefined);
 
   // ── Connect to Ably on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -130,6 +149,37 @@ export default function DronePage() {
       setConnStatus("error");
       setStatusMessage("Ably API key is not configured.");
       return;
+    }
+
+    // Initialize offline sync system
+    if (isIndexedDBAvailable()) {
+      offlineSyncCleanupRef.current = initializeOfflineSync({
+        onStateChange: (state: any) => {
+          setOfflineState(state.offlineState as OfflineState);
+          setPendingCount(state.pendingCount);
+          setLastSyncAt(state.lastSyncAt);
+          setSyncInProgress(state.syncState === "syncing");
+        },
+        onSyncError: (error: any) => {
+          console.error("[DronePage] Sync error:", error);
+        },
+        onSyncComplete: () => {
+          console.log("[DronePage] Sync completed");
+        },
+      }) || undefined;
+
+      // Subscribe to state changes
+      unsubscribeRef.current = subscribeToStateChanges((state: any) => {
+        setOfflineState(state.offlineState as OfflineState);
+        setPendingCount(state.pendingCount);
+        setLastSyncAt(state.lastSyncAt);
+        setSyncInProgress(state.syncState === "syncing");
+      }) || undefined;
+
+      // Update pending count on mount
+      updatePendingCount();
+    } else {
+      console.warn("[DronePage] IndexedDB not available, offline mode disabled");
     }
 
     const ably = new Realtime({ key, autoConnect: true });
@@ -251,6 +301,12 @@ export default function DronePage() {
         ch.publish(EVENT_HEARTBEAT, { online: false }).catch(() => {});
       }
       ably.close();
+      if (offlineSyncCleanupRef.current) {
+        offlineSyncCleanupRef.current();
+      }
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
     };
   }, []);
 
@@ -262,6 +318,27 @@ export default function DronePage() {
     latitude?: number,
     longitude?: number,
   ) => {
+    // If offline, store for later sync
+    if (offlineState === "offline") {
+      setConnStatus("offline");
+      setStatusMessage("Offline — saving to local storage…");
+      
+      try {
+        const id = `pending-${Date.now()}`;
+        await storePendingCapture(id, base64, mimeType, latitude, longitude);
+        await updatePendingCount();
+        setStatusMessage("Saved offline. Will upload when network returns.");
+        setTimeout(() => { setConnStatus("connected"); setStatusMessage(""); }, 5000);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to save offline";
+        console.error("[DronePage] Offline storage error:", msg);
+        setConnStatus("error");
+        setStatusMessage(`Storage error: ${msg}`);
+        setTimeout(() => { setConnStatus("connected"); setStatusMessage(""); }, 6000);
+      }
+      return;
+    }
+
     setConnStatus("analyzing");
     setStatusMessage("Sending to AI…");
 
@@ -327,6 +404,48 @@ export default function DronePage() {
       setStatusMessage(msg);
       setTimeout(() => { setConnStatus("connected"); setStatusMessage(""); }, 6_000);
     }
+  }, [offlineState]);
+
+  // Register the analyze callback for offline sync
+  useEffect(() => {
+    registerAnalyzeCallback(async (base64, mimeType, previewDataUrl, latitude, longitude, pendingId) => {
+      console.log(`[DronePage] Syncing offline capture ${pendingId}`);
+      // Run analysis using the same flow as normal online capture
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64, mimeType }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error ?? "Analysis failed.");
+      }
+      const result = data.result as AnalysisResult;
+
+      // Publish to Ably using the same flow
+      let smallPreview = previewDataUrl;
+      try {
+        smallPreview = await resizeForPreview(previewDataUrl);
+      } catch {
+        // non-fatal
+      }
+
+      const ch = channelRef.current;
+      if (!ch) {
+        throw new Error("Not connected to Ably");
+      }
+
+      const payload: DroneAnalysisMessage = {
+        result,
+        previewDataUrl: smallPreview,
+        capturedAt: new Date().toISOString(),
+        latitude,
+        longitude,
+      };
+
+      await ch.publish(EVENT_ANALYSIS, payload);
+      console.log(`[DronePage] Synced offline capture ${pendingId} to Ably`);
+    });
   }, []);
 
   // ── Handle camera state changes (start/stop) ──────────────────────────────
@@ -354,7 +473,15 @@ export default function DronePage() {
             </p>
           </div>
         </div>
-        <ConnectionPill status={connStatus} />
+        <div className="flex items-center gap-2">
+          {offlineState === "offline" ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold bg-red-500/15 border-red-500/40 text-red-300">
+              <WifiOff className="w-3 h-3" />
+              Offline Mode
+            </div>
+          ) : null}
+          <ConnectionPill status={connStatus} />
+        </div>
       </header>
 
       <main className="flex-1 px-4 py-5 flex flex-col gap-5 max-w-lg mx-auto w-full">
@@ -363,6 +490,59 @@ export default function DronePage() {
           lastSentAt={lastSentAt}
           message={statusMessage}
         />
+
+        {/* Offline Status Widget */}
+        {offlineState === "offline" && (
+          <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-500/20">
+                <WifiOff className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <span className="text-sm font-bold text-red-300">Offline Mode Active</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-slate-900/40 px-3 py-2">
+                <p className="text-slate-400 uppercase tracking-wide">Pending Uploads</p>
+                <p className="text-red-300 font-semibold mt-1">{pendingCount}</p>
+              </div>
+              <div className="rounded-lg bg-slate-900/40 px-3 py-2">
+                <p className="text-slate-400 uppercase tracking-wide">Status</p>
+                <p className="text-yellow-300 font-semibold mt-1">{syncInProgress ? "Syncing…" : "Ready"}</p>
+              </div>
+              {lastSyncAt && (
+                <div className="col-span-2 rounded-lg bg-slate-900/40 px-3 py-2">
+                  <p className="text-slate-400 uppercase tracking-wide">Last Sync</p>
+                  <p className="text-slate-300 font-semibold mt-1 text-[10px]">{lastSyncAt}</p>
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-red-300/70 mt-3 leading-snug">
+              📷 Photos will be saved locally and automatically uploaded when network returns.
+            </p>
+          </div>
+        )}
+
+        {/* Online Status Widget */}
+        {offlineState === "online" && pendingCount > 0 && (
+          <div className="rounded-xl border border-orange-500/25 bg-orange-500/5 p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-orange-500/20">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse" />
+              </div>
+              <span className="text-sm font-bold text-orange-300">Syncing Offline Captures</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-slate-900/40 px-3 py-2">
+                <p className="text-slate-400 uppercase tracking-wide">Pending</p>
+                <p className="text-orange-300 font-semibold mt-1">{pendingCount}</p>
+              </div>
+              <div className="rounded-lg bg-slate-900/40 px-3 py-2">
+                <p className="text-slate-400 uppercase tracking-wide">Progress</p>
+                <p className="text-blue-300 font-semibold mt-1">{syncInProgress ? "Uploading…" : "Ready"}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-2xl border border-purple-500/25 bg-gradient-to-b from-purple-950/20 to-[#080e1a] overflow-hidden shadow-lg shadow-purple-950/20">
           <div className="flex items-center gap-3 px-4 py-3 bg-purple-950/30 border-b border-purple-500/15">
@@ -379,6 +559,7 @@ export default function DronePage() {
               onAnalyze={handleDroneAnalyze}
               isAnalyzing={connStatus === "analyzing" || connStatus === "publishing"}
               onCameraStateChange={handleCameraStateChange}
+              offlineMode={offlineState === "offline"}
             />
           </div>
         </div>
@@ -406,9 +587,10 @@ function ConnectionPill({ status }: { status: ConnStatus }) {
     publishing:  { cls: "bg-blue-500/15 border-blue-500/40 text-blue-300",       label: "Sending…",       pulse: true  },
     sent:        { cls: "bg-green-500/15 border-green-500/40 text-green-300",    label: "Result Sent ✓",  pulse: false },
     error:       { cls: "bg-red-500/15 border-red-500/40 text-red-300",          label: "Error",          pulse: false },
+    offline:     { cls: "bg-red-500/15 border-red-500/40 text-red-300",          label: "Offline",        pulse: false },
   };
   const c = cfg[status];
-  const Icon = status === "disconnected" || status === "error" ? WifiOff : Wifi;
+  const Icon = status === "disconnected" || status === "error" || status === "offline" ? WifiOff : Wifi;
   return (
     <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${c.cls}`}>
       {c.pulse && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
@@ -419,6 +601,14 @@ function ConnectionPill({ status }: { status: ConnStatus }) {
 }
 
 function StatusBanner({ status, lastSentAt, message }: { status: ConnStatus; lastSentAt: string | null; message: string }) {
+  if (status === "offline") {
+    return (
+      <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/25">
+        <WifiOff className="w-4 h-4 text-red-400 shrink-0" />
+        <p className="text-sm font-semibold text-red-300">{message || "Offline — changes saved locally"}</p>
+      </div>
+    );
+  }
   if (status === "sent" || (status === "connected" && lastSentAt)) {
     return (
       <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/25">
