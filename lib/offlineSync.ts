@@ -157,13 +157,14 @@ export function initializeOfflineSync(cb?: OfflineSyncCallbacks) {
 
 /**
  * Update pending count from storage.
- * Counts both "pending" and "failed" captures for sync eligibility.
+ * Counts "pending", "failed", and "syncing" captures for sync eligibility.
  */
 export async function updatePendingCount() {
   try {
     const pending = await getPendingCapturesByStatus("pending");
     const failed = await getPendingCapturesByStatus("failed");
-    const totalCount = pending.length + failed.length;
+    const syncing = await getPendingCapturesByStatus("syncing");
+    const totalCount = pending.length + failed.length + syncing.length;
     updateState({ pendingCount: totalCount });
   } catch (err) {
     console.error("[offlineSync] Failed to update pending count:", err);
@@ -222,10 +223,11 @@ export async function syncPendingCaptures(
   updateState({ syncState: "syncing", syncError: null });
 
   try {
-    // Fetch both pending and failed captures for retry
+    // Fetch pending, failed, and syncing captures for retry
     const pendingCaptures = await getPendingCapturesByStatus("pending");
     const failedCaptures = await getPendingCapturesByStatus("failed");
-    const allToSync = [...pendingCaptures, ...failedCaptures];
+    const syncingCaptures = await getPendingCapturesByStatus("syncing");
+    const allToSync = [...pendingCaptures, ...failedCaptures, ...syncingCaptures];
 
     if (allToSync.length === 0) {
       console.log("[offlineSync] No captures to sync");
@@ -235,7 +237,7 @@ export async function syncPendingCaptures(
       return;
     }
 
-    console.log(`[offlineSync] Starting sync of ${allToSync.length} captures (${pendingCaptures.length} pending, ${failedCaptures.length} failed)`);
+    console.log(`[offlineSync] Starting sync of ${allToSync.length} captures (${pendingCaptures.length} pending, ${failedCaptures.length} failed, ${syncingCaptures.length} syncing)`);
 
     let successCount = 0;
     for (let i = 0; i < allToSync.length; i++) {
