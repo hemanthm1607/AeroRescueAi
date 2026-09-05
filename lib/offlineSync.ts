@@ -212,6 +212,12 @@ export async function syncPendingCaptures(
     return;
   }
 
+  // Do not process if callback is not registered - captures remain pending for retry
+  if (!analyzeCallback) {
+    console.log("[offlineSync] Analyze callback not registered, deferring sync");
+    return;
+  }
+
   syncInProgressRef.value = true;
   updateState({ syncState: "syncing", syncError: null });
 
@@ -240,41 +246,33 @@ export async function syncPendingCaptures(
         // Mark as syncing
         await updatePendingCaptureStatus(capture.id, "syncing");
 
-        if (analyzeCallback) {
-          // Use provided callback (from DronePage context)
-          try {
-            await analyzeCallback(
-              capture.imageData,
-              capture.mimeType,
-              capture.imageData,
-              capture.latitude,
-              capture.longitude,
-              capture.id
-            );
-            // If callback succeeds, mark as completed and delete
-            await updatePendingCaptureStatus(capture.id, "completed");
-            await deletePendingCapture(capture.id);
-            successCount++;
-            console.log(`[offlineSync] Successfully synced capture ${capture.id}`);
-          } catch (callbackErr) {
-            // Callback failed, try fallback API
-            console.log(`[offlineSync] Callback failed for ${capture.id}, trying fallback API`);
-            await analyzeCaptureDirectly(capture);
-            await updatePendingCaptureStatus(capture.id, "completed");
-            await deletePendingCapture(capture.id);
-            successCount++;
-          }
-        } else {
-          // Fallback: call the analyze API directly
-          await analyzeCaptureDirectly(capture);
+        try {
+          // Use registered callback (from DronePage context)
+          // This includes /api/analyze call and Ably publish
+          await analyzeCallback(
+            capture.imageData,
+            capture.mimeType,
+            capture.imageData,
+            capture.latitude,
+            capture.longitude,
+            capture.id
+          );
+          // If callback succeeds, mark as completed and delete
           await updatePendingCaptureStatus(capture.id, "completed");
           await deletePendingCapture(capture.id);
           successCount++;
           console.log(`[offlineSync] Successfully synced capture ${capture.id}`);
+        } catch (callbackErr) {
+          // Callback failed - restore to failed status so it can be retried
+          const errorMsg = callbackErr instanceof Error ? callbackErr.message : "Unknown error";
+          console.error(`[offlineSync] Callback failed for ${capture.id}:`, errorMsg);
+
+          const newRetryCount = (capture.retryCount || 0) + 1;
+          await updatePendingCaptureStatus(capture.id, "failed", newRetryCount);
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        console.error(`[offlineSync] Failed to sync capture ${capture.id}:`, errorMsg);
+        console.error(`[offlineSync] Failed to process capture ${capture.id}:`, errorMsg);
 
         // Mark as failed with incremented retry count
         const newRetryCount = (capture.retryCount || 0) + 1;
@@ -315,34 +313,6 @@ export async function syncPendingCaptures(
   } finally {
     syncInProgressRef.value = false;
   }
-}
-
-/**
- * Fallback: analyze a capture by calling the API directly.
- */
-async function analyzeCaptureDirectly(capture: PendingCapture): Promise<void> {
-  // Call the analyze API endpoint
-  const res = await fetch("/api/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      imageBase64: capture.imageData,
-      mimeType: capture.mimeType,
-    }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error || "Analysis failed");
-  }
-
-  const data = await res.json();
-  if (!data.success) {
-    throw new Error(data.error || "Analysis returned error");
-  }
-
-  // Analysis succeeded - capture will be marked as completed by caller
-  console.log(`[offlineSync] Analysis result for ${capture.id}:`, data.result);
 }
 
 /**
