@@ -3,6 +3,8 @@
  * Stores pending captured images and their metadata for sync when online.
  */
 
+import type { AnalysisResult } from "@/types";
+
 export interface PendingCapture {
   id: string; // Unique local ID
   imageData: string; // base64 or data URL
@@ -14,6 +16,7 @@ export interface PendingCapture {
   uploadStatus: "pending" | "syncing" | "completed" | "failed";
   retryCount: number;
   lastRetryAt?: string; // ISO string
+  analysisResult?: AnalysisResult; // Optional: analysis result when available locally
 }
 
 const DB_NAME = "AeroRescueOffline";

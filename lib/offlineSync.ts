@@ -158,6 +158,7 @@ export function initializeOfflineSync(cb?: OfflineSyncCallbacks) {
 /**
  * Update pending count from storage.
  * Counts "pending", "failed", and "syncing" captures for sync eligibility.
+ * Does NOT count "completed" captures (they stay in storage for viewing but not for upload).
  */
 export async function updatePendingCount() {
   try {
@@ -259,9 +260,10 @@ export async function syncPendingCaptures(
             capture.longitude,
             capture.id
           );
-          // If callback succeeds, mark as completed and delete
+          // If callback succeeds, mark as completed and KEEP in IndexedDB for viewing
+          // The callback is responsible for storing the analysis result via storeAnalysisResultForCapture()
           await updatePendingCaptureStatus(capture.id, "completed");
-          await deletePendingCapture(capture.id);
+          // DO NOT delete - keep capture in IndexedDB for the Offline Upload & Detection module
           successCount++;
           console.log(`[offlineSync] Successfully synced capture ${capture.id}`);
         } catch (callbackErr) {
@@ -350,4 +352,55 @@ export async function storePendingCapture(
 
   await savePendingCapture(capture);
   await updatePendingCount();
+}
+
+/**
+ * Store analysis result for a pending capture.
+ * Called after analyzeCallback completes successfully with the AI analysis result.
+ */
+export async function storeAnalysisResultForCapture(
+  captureId: string,
+  analysisResult: any // AnalysisResult type
+): Promise<void> {
+  try {
+    const { getPendingCaptureById, initDB } = await import(
+      "@/lib/offlineStorage"
+    );
+
+    const capture = await getPendingCaptureById(captureId);
+    if (!capture) {
+      console.warn(
+        `[offlineSync] Capture ${captureId} not found when storing analysis result`
+      );
+      return;
+    }
+
+    // Update the capture with the analysis result
+    capture.analysisResult = analysisResult;
+
+    // Re-save the capture with the analysis result
+    const db = await initDB();
+
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(["pending_captures"], "readwrite");
+      const store = tx.objectStore("pending_captures");
+      const request = store.put(capture);
+
+      request.onerror = () => {
+        reject(new Error("Failed to store analysis result"));
+      };
+      request.onsuccess = () => {
+        console.log(
+          `[offlineSync] Stored analysis result for capture ${captureId}`
+        );
+        resolve();
+      };
+    });
+  } catch (err) {
+    console.error(
+      `[offlineSync] Failed to store analysis result for ${captureId}:`,
+      err
+    );
+    // Non-fatal error - continue processing
+  }
 }

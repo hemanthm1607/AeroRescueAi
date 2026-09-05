@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const MODULE_LABELS: Record<ModuleId, { title: string; sub: string }> = {
   detection: { title: "Upload & Live Detection", sub: "AI-powered flood scene analysis" },
+  offlineupload: { title: "Offline Upload & Detection", sub: "Stored offline captures" },
   battery:   { title: "Drone Battery & Flight Status", sub: "Simulation data — no physical drone connected" },
   incidents: { title: "Incident Management", sub: "Track, assign teams, and manage rescue operations" },
   history:   { title: "Analysis History", sub: "Past flood scene analyses" },

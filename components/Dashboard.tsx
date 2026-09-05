@@ -12,6 +12,7 @@ import { requestGeoLocation } from "@/lib/geo";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import ModuleDetection from "@/components/modules/ModuleDetection";
+import ModuleOfflineUpload from "@/components/modules/ModuleOfflineUpload";
 import ModuleBattery from "@/components/modules/ModuleBattery";
 import ModuleIncidents from "@/components/modules/ModuleIncidents";
 import ModuleHistory from "@/components/modules/ModuleHistory";
@@ -239,10 +240,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               </div>
             )}
 
-            {/* MODULE 2 — Drone Battery */}
+            {/* MODULE 2 — Offline Upload & Detection */}
+            {activeModule === "offlineupload" && <ModuleOfflineUpload />}
+
+            {/* MODULE 3 — Drone Battery */}
             {activeModule === "battery" && <ModuleBattery />}
 
-            {/* MODULE 3 — Incidents */}
+            {/* MODULE 4 — Incidents */}
             {activeModule === "incidents" && (
               <ModuleIncidents
                 incidents={incidents}
@@ -252,27 +256,27 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               />
             )}
 
-            {/* MODULE 4 — History */}
+            {/* MODULE 5 — History */}
             {activeModule === "history" && (
               <ModuleHistory entries={history} onClear={() => setHistory([])} />
             )}
 
-            {/* MODULE 5 — Incident Map */}
+            {/* MODULE 6 — Incident Map */}
             {activeModule === "map" && (
               <ModuleIncidentMap entries={history} />
             )}
 
-            {/* MODULE 6 — Resource Allocation */}
+            {/* MODULE 7 — Resource Allocation */}
             {activeModule === "resources" && (
               <ModuleResources entries={history} />
             )}
 
-            {/* MODULE 7 — Incident Statistics */}
+            {/* MODULE 8 — Incident Statistics */}
             {activeModule === "stats" && (
               <ModuleIncidentStats entries={history} />
             )}
 
-            {/* MODULE 8 — Our App */}
+            {/* MODULE 9 — Our App */}
             {activeModule === "ourapp" && <ModuleOurApp />}
 
           </div>

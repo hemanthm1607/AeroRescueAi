@@ -24,6 +24,7 @@ import {
   syncPendingCaptures,
   updatePendingCount,
   registerAnalyzeCallback,
+  storeAnalysisResultForCapture,
 } from "@/lib/offlineSync";
 import { isIndexedDBAvailable } from "@/lib/offlineStorage";
 
@@ -427,6 +428,11 @@ export default function DronePage() {
         throw new Error(data.error ?? "Analysis failed.");
       }
       const result = data.result as AnalysisResult;
+
+      // Store the analysis result in IndexedDB before publishing
+      if (pendingId) {
+        await storeAnalysisResultForCapture(pendingId, result);
+      }
 
       // Publish to Ably using the same flow
       let smallPreview = previewDataUrl;

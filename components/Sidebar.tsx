@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Shield, ScanSearch, BatteryCharging, History, Info, Menu, X, ChevronRight, Map, Zap, TrendingUp } from "lucide-react";
+import { Shield, ScanSearch, BatteryCharging, History, Info, Menu, X, ChevronRight, Map, Zap, TrendingUp, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ModuleId = "detection" | "battery" | "incidents" | "history" | "map" | "resources" | "stats" | "ourapp";
+export type ModuleId = "detection" | "offlineupload" | "battery" | "incidents" | "history" | "map" | "resources" | "stats" | "ourapp";
 
 interface NavItem {
   id: ModuleId;
@@ -29,6 +29,17 @@ const NAV: NavItem[] = [
     activeBorder: "border-l-blue-500",
     activeText: "text-blue-300",
     activeIconColor: "text-blue-400",
+  },
+  {
+    id: "offlineupload",
+    label: "Offline Upload",
+    sublabel: "Stored Captures",
+    icon: Cloud,
+    accent: "cyan",
+    activeBg: "bg-cyan-500/10",
+    activeBorder: "border-l-cyan-500",
+    activeText: "text-cyan-300",
+    activeIconColor: "text-cyan-400",
   },
   {
     id: "battery",
