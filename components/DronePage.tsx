@@ -140,6 +140,7 @@ export default function DronePage() {
   const currentGpsRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const offlineSyncCleanupRef = useRef<(() => void) | undefined>(undefined);
   const unsubscribeRef = useRef<(() => void) | undefined>(undefined);
+  const offlineStateRef = useRef<OfflineState>("online");
 
   // ── Connect to Ably on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -156,6 +157,7 @@ export default function DronePage() {
       offlineSyncCleanupRef.current = initializeOfflineSync({
         onStateChange: (state: any) => {
           setOfflineState(state.offlineState as OfflineState);
+          offlineStateRef.current = state.offlineState as OfflineState;
           setPendingCount(state.pendingCount);
           setLastSyncAt(state.lastSyncAt);
           setSyncInProgress(state.syncState === "syncing");
@@ -171,6 +173,7 @@ export default function DronePage() {
       // Subscribe to state changes
       unsubscribeRef.current = subscribeToStateChanges((state: any) => {
         setOfflineState(state.offlineState as OfflineState);
+        offlineStateRef.current = state.offlineState as OfflineState;
         setPendingCount(state.pendingCount);
         setLastSyncAt(state.lastSyncAt);
         setSyncInProgress(state.syncState === "syncing");
@@ -318,8 +321,11 @@ export default function DronePage() {
     latitude?: number,
     longitude?: number,
   ) => {
+    // Read current offline state from ref instead of closure to avoid stale state
+    const isOffline = offlineStateRef.current === "offline";
+    
     // If offline, store for later sync
-    if (offlineState === "offline") {
+    if (isOffline) {
       setConnStatus("offline");
       setStatusMessage("Offline — saving to local storage…");
       
@@ -404,7 +410,7 @@ export default function DronePage() {
       setStatusMessage(msg);
       setTimeout(() => { setConnStatus("connected"); setStatusMessage(""); }, 6_000);
     }
-  }, [offlineState]);
+  }, []);
 
   // Register the analyze callback for offline sync
   useEffect(() => {
