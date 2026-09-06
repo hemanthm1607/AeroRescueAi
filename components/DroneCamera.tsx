@@ -108,26 +108,59 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
     if (isAutoAnalyzingRef.current || isAnalyzing) return; // Prevent simultaneous analyses
     if (!videoRef.current || !canvasRef.current) return;
 
+    console.log("[OFFLINE] Camera frame capture triggered");
+
     isAutoAnalyzingRef.current = true;
     setCountdown(10); // Reset countdown when analysis starts
     setLastAnalysisTime("Just now");
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
+    
+    // Check if video has valid dimensions
+    const videoWidth = video.videoWidth || 0;
+    const videoHeight = video.videoHeight || 0;
+    
+    if (videoWidth === 0 || videoHeight === 0) {
+      console.error("[OFFLINE] Camera ERROR: Video has zero dimensions, waiting...");
       isAutoAnalyzingRef.current = false;
       return;
     }
 
+    canvas.width = videoWidth;
+    canvas.height = videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      console.error("[OFFLINE] Camera ERROR: Could not get canvas context");
+      isAutoAnalyzingRef.current = false;
+      return;
+    }
+
+    console.log(`[OFFLINE] Drawing video frame: ${videoWidth}x${videoHeight}`);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
 
+    // Validate data URL
+    if (!dataUrl || typeof dataUrl !== "string" || dataUrl.length < 100) {
+      console.error(`[OFFLINE] Camera ERROR: Invalid data URL (length: ${dataUrl?.length || 0})`);
+      isAutoAnalyzingRef.current = false;
+      return;
+    }
+
     const base64 = dataUrlToBase64(dataUrl);
     const mime = getMimeFromDataUrl(dataUrl);
+    
+    // Validate base64 data
+    if (!base64 || base64.length < 100) {
+      console.error(`[OFFLINE] Camera ERROR: Invalid base64 (length: ${base64?.length || 0})`);
+      console.error(`[OFFLINE] Data URL length: ${dataUrl.length}`);
+      isAutoAnalyzingRef.current = false;
+      return;
+    }
+
+    console.log(`[OFFLINE] Camera frame captured: ${base64.length} base64 bytes, ${mime}`);
+    console.log(`[OFFLINE] GPS: ${gpsLocation ? `${gpsLocation.latitude.toFixed(6)}, ${gpsLocation.longitude.toFixed(6)}` : "null"}`);
     
     // Pass GPS coordinates if available
     onAnalyze(

@@ -141,31 +141,39 @@ export default function DronePage() {
   useEffect(() => {
     // Monitor online/offline status
     const handleOnline = () => {
-      console.log("[DronePage] Network online");
+      console.log("[DronePage] NETWORK CHANGED: online");
       setIsOnline(true);
+      // When coming online, immediately check for pending captures
+      getPendingCaptureCount().then(count => {
+        console.log(`[DronePage] Online - pending captures: ${count}`);
+        setPendingCaptureCount(count);
+      });
     };
 
     const handleOffline = () => {
-      console.log("[DronePage] Network offline");
+      console.log("[DronePage] NETWORK CHANGED: offline");
       setIsOnline(false);
+      setConnStatus("offline");
+      // When going offline, ensure we have current count
+      getPendingCaptureCount().then(count => {
+        console.log(`[DronePage] Offline - pending captures: ${count}`);
+        setPendingCaptureCount(count);
+      });
     };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
-    // Check pending captures periodically when offline
-    const updatePendingCount = async () => {
-      const count = await getPendingCaptureCount();
+    // Initial check
+    getPendingCaptureCount().then(count => {
+      console.log(`[DronePage] Initial pending captures: ${count}`);
       setPendingCaptureCount(count);
-    };
+    });
 
-    const countInterval = setInterval(updatePendingCount, 2000);
-    updatePendingCount();
-
+    // Also update pending count on network status changes
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
-      clearInterval(countInterval);
     };
   }, []);
 
@@ -315,19 +323,33 @@ export default function DronePage() {
     latitude?: number,
     longitude?: number,
   ) => {
+    console.log(`[DronePage] Camera frame captured: ${base64.length} bytes, ${mimeType}`);
+    console.log(`[DronePage] Frame size: ${base64.length} bytes, network status: ${isOnline ? "online" : "offline"}`);
+    
     // If offline, save locally to IndexedDB
     if (!isOnline) {
-      console.log("[DronePage] Offline: storing capture locally");
+      console.log("[DronePage] OFFLINE: Camera frame captured - storing locally");
+      console.log(`[DronePage] GPS location: ${latitude ? latitude.toFixed(6) : "null"}, ${longitude ? longitude.toFixed(6) : "null"}`);
+      
       try {
-        await saveOfflineCapture(base64, mimeType, latitude ?? null, longitude ?? null);
+        console.log("[DronePage] Attempting to save to IndexedDB...");
+        const captureId = await saveOfflineCapture(base64, mimeType, latitude ?? null, longitude ?? null);
+        console.log(`[DronePage] OFFLINE: Capture saved successfully: ${captureId}`);
+        
+        // Immediately update pending count
         const count = await getPendingCaptureCount();
+        console.log(`[DronePage] Pending capture count: ${count}`);
         setPendingCaptureCount(count);
-        setStatusMessage(`Capture stored locally (${count} total)`);
+        
+        setStatusMessage(`${count} capture${count !== 1 ? "s" : ""} stored locally`);
         setTimeout(() => {
           setStatusMessage("");
         }, 3000);
       } catch (err) {
-        console.error("[DronePage] Failed to save offline capture:", err);
+        const errorMsg = err instanceof Error ? err.message : "Unknown error";
+        console.error("[DronePage] OFFLINE: Failed to save offline capture:", errorMsg);
+        console.error("[DronePage] Base64 length:", base64.length);
+        console.error("[DronePage] MIME type:", mimeType);
         setStatusMessage("Failed to store capture locally");
         setTimeout(() => {
           setStatusMessage("");
@@ -411,8 +433,11 @@ export default function DronePage() {
 
   // ── Send pending offline captures (manual button) ──────────────────────────
   const handleSendPendingCaptures = useCallback(async () => {
+    console.log("[SEND] Send Pending Captures button pressed");
+    
     // Check if internet is available
     if (!isOnline) {
+      console.log("[SEND] Internet connection required - cannot send while offline");
       setOfflineState("error");
       setStatusMessage("Internet connection required to send pending captures.");
       setTimeout(() => {
@@ -427,8 +452,12 @@ export default function DronePage() {
 
     try {
       // Get all pending captures
+      console.log("[SEND] Reading pending captures from IndexedDB...");
       const captures = await getPendingCaptures();
+      console.log(`[SEND] Pending captures found: ${captures.length}`);
+      
       if (captures.length === 0) {
+        console.log("[SEND] No pending captures to send");
         setOfflineState("idle");
         setOfflineSendProgress(null);
         return;
@@ -441,10 +470,11 @@ export default function DronePage() {
       // Process each capture
       for (let i = 0; i < captures.length; i++) {
         const capture = captures[i];
+        console.log(`[SEND] Processing capture ${i + 1}/${captures.length}: ${capture.id}`);
 
         try {
           // Step 1: Analyze with Gemini
-          console.log(`[DronePage] Analyzing capture ${i + 1}/${captures.length}`);
+          console.log(`[SEND] Sending capture ${i + 1} to Gemini API...`);
           const res = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -459,6 +489,7 @@ export default function DronePage() {
             throw new Error(data.error ?? "Analysis failed");
           }
 
+          console.log(`[SEND] Gemini success for capture ${i + 1}`);
           const result: AnalysisResult = data.result;
 
           // Step 2: Resize preview
@@ -483,6 +514,7 @@ export default function DronePage() {
             });
           } catch {
             // Use full preview if resize fails
+            console.log(`[SEND] Preview resize failed for capture ${i + 1}, using original`);
           }
 
           // Step 3: Publish to Ably
@@ -499,16 +531,21 @@ export default function DronePage() {
             longitude: capture.longitude ?? undefined,
           };
 
+          console.log(`[SEND] Publishing capture ${i + 1} to Ably...`);
           await ch.publish(EVENT_ANALYSIS, payload);
-          console.log(`[DronePage] Capture ${i + 1} sent successfully`);
+          console.log(`[SEND] Ably publish success for capture ${i + 1}`);
 
           // Step 4: Delete from IndexedDB after successful send
+          console.log(`[SEND] Deleting capture ${i + 1} from IndexedDB...`);
           await deleteCapture(capture.id);
+          console.log(`[SEND] Capture ${i + 1} completed successfully`);
+          
           successCount++;
           setOfflineSendProgress({ sent: successCount, total: captures.length });
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Unknown error";
-          console.error(`[DronePage] Failed to send capture ${i + 1}:`, msg);
+          console.error(`[SEND] Failed to send capture ${i + 1}:`, msg);
+          console.error(`[SEND] Capture will remain pending: ${capture.id}`);
           failedCaptureIds.push(capture.id);
         }
       }
@@ -516,9 +553,11 @@ export default function DronePage() {
       // Update UI with results
       const failedCount = failedCaptureIds.length;
       if (failedCount === 0) {
+        console.log(`[SEND] All ${successCount} captures sent successfully`);
         setOfflineState("sent");
         setStatusMessage(`${successCount} pending captures sent successfully.`);
       } else {
+        console.log(`[SEND] ${successCount} sent successfully, ${failedCount} still pending`);
         setOfflineState("error");
         setStatusMessage(
           `${successCount} sent successfully, ${failedCount} still pending.`
@@ -526,7 +565,9 @@ export default function DronePage() {
       }
 
       // Refresh pending count
+      console.log("[SEND] Refreshing pending count...");
       const remainingCount = await getPendingCaptureCount();
+      console.log(`[SEND] Remaining pending captures: ${remainingCount}`);
       setPendingCaptureCount(remainingCount);
 
       setTimeout(() => {
@@ -536,7 +577,7 @@ export default function DronePage() {
       }, 4000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[DronePage] Send pending error:", msg);
+      console.error("[SEND] Send pending error:", msg);
       setOfflineState("error");
       setStatusMessage("Failed to send pending captures.");
 
@@ -567,7 +608,7 @@ export default function DronePage() {
             </p>
           </div>
         </div>
-        <ConnectionPill status={connStatus} isOffline={!isOnline && pendingCaptureCount > 0} />
+        <ConnectionPill status={connStatus} isOffline={!isOnline} />
       </header>
 
       <main className="flex-1 px-4 py-5 flex flex-col gap-5 max-w-lg mx-auto w-full">
@@ -722,11 +763,12 @@ function OfflineModeIndicator({
         <span className="text-sm font-bold text-red-300">OFFLINE MODE</span>
       </div>
       <div className="text-xs text-slate-400">No Internet Connection</div>
-      {pendingCount > 0 && (
-        <div className="text-sm text-slate-300 font-semibold">
-          {pendingCount} capture{pendingCount !== 1 ? "s" : ""} stored locally
-        </div>
-      )}
+      
+      <div className="text-sm text-slate-300 font-semibold">
+        {pendingCount === 0 
+          ? "0 captures stored locally" 
+          : `${pendingCount} capture${pendingCount !== 1 ? "s" : ""} stored locally`}
+      </div>
 
       {isSending && sendProgress ? (
         <div className="flex flex-col gap-2">
@@ -742,15 +784,19 @@ function OfflineModeIndicator({
             />
           </div>
         </div>
-      ) : (
+      ) : pendingCount > 0 ? (
         <button
           onClick={onSendClick}
-          disabled={isSending || pendingCount === 0}
+          disabled={isSending}
           className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-300 hover:bg-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-semibold"
         >
           <Upload className="w-4 h-4" />
           Send Pending Captures
         </button>
+      ) : (
+        <div className="text-xs text-slate-500 italic">
+          Camera captures will be stored locally
+        </div>
       )}
     </div>
   );
