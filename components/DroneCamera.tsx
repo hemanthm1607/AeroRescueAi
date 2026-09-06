@@ -28,11 +28,12 @@ interface DroneCameraProps {
   ) => void;
   isAnalyzing: boolean;
   onCameraStateChange?: (isActive: boolean) => void;
+  isOnline?: boolean; // Add online/offline state to camera
 }
 
 type CameraState = "idle" | "requesting" | "active" | "error" | "captured";
 
-export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChange }: DroneCameraProps) {
+export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChange, isOnline = true }: DroneCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -111,7 +112,6 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
     console.log("[OFFLINE] Camera frame capture triggered");
 
     isAutoAnalyzingRef.current = true;
-    setCountdown(10); // Reset countdown when analysis starts
     setLastAnalysisTime("Just now");
 
     const video = videoRef.current;
@@ -120,6 +120,8 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
     // Check if video has valid dimensions
     const videoWidth = video.videoWidth || 0;
     const videoHeight = video.videoHeight || 0;
+    
+    console.log(`[OFFLINE] Video ready: ${video.readyState >= 2}, dimensions: ${videoWidth}x${videoHeight}`);
     
     if (videoWidth === 0 || videoHeight === 0) {
       console.error("[OFFLINE] Camera ERROR: Video has zero dimensions, waiting...");
@@ -161,31 +163,42 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
 
     console.log(`[OFFLINE] Camera frame captured: ${base64.length} base64 bytes, ${mime}`);
     console.log(`[OFFLINE] GPS: ${gpsLocation ? `${gpsLocation.latitude.toFixed(6)}, ${gpsLocation.longitude.toFixed(6)}` : "null"}`);
+    console.log(`[OFFLINE] Network status: ${isOnline ? "online" : "offline"}`);
     
-    // Pass GPS coordinates if available
-    onAnalyze(
-      base64,
-      mime,
-      dataUrl,
-      gpsLocation?.latitude,
-      gpsLocation?.longitude
-    );
-
-    isAutoAnalyzingRef.current = false;
+    try {
+      // Pass GPS coordinates if available
+      onAnalyze(
+        base64,
+        mime,
+        dataUrl,
+        gpsLocation?.latitude,
+        gpsLocation?.longitude
+      );
+    } catch (error) {
+      console.error("[OFFLINE] Camera ERROR: onAnalyze callback failed:", error);
+    } finally {
+      // Always reset the analyzing flag, even if onAnalyze throws
+      isAutoAnalyzingRef.current = false;
+      console.log("[OFFLINE] Capture completed, auto-analyzing flag reset");
+    }
   }
 
   function startCountdown() {
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    console.log("[OFFLINE] Starting countdown timer");
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      console.log("[OFFLINE] Cleared existing countdown interval");
+    }
     setCountdown(10);
     countdownIntervalRef.current = setInterval(() => {
+      console.log("[OFFLINE] Countdown tick");
       setCountdown((prev) => {
-        if (prev <= 1) {
-          if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-          return 10;
-        }
-        return prev - 1;
+        const next = prev <= 1 ? 10 : prev - 1;
+        console.log(`[OFFLINE] Countdown: ${prev} → ${next}`);
+        return next;
       });
     }, 1000);
+    console.log(`[OFFLINE] Countdown interval started with ID: ${countdownIntervalRef.current}`);
   }
 
   const startCamera = useCallback(async () => {
@@ -254,10 +267,16 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
             startCountdown();
 
             // Start automatic 10-second analysis loop
-            if (autoLoopIntervalRef.current) clearInterval(autoLoopIntervalRef.current);
+            if (autoLoopIntervalRef.current) {
+              clearInterval(autoLoopIntervalRef.current);
+              console.log("[OFFLINE] Cleared existing auto-loop interval");
+            }
+            console.log("[OFFLINE] Starting 10-second auto-loop interval");
             autoLoopIntervalRef.current = setInterval(() => {
+              console.log("[OFFLINE] Auto-loop timer fired, triggering capture");
               captureAndAnalyzeFrame();
             }, 10_000);
+            console.log(`[OFFLINE] Auto-loop interval started with ID: ${autoLoopIntervalRef.current}`);
           } else {
             // Video not ready yet, check again soon
             setTimeout(waitForVideoReady, 100);

@@ -653,6 +653,7 @@ export default function DronePage() {
               onAnalyze={handleDroneAnalyze}
               isAnalyzing={connStatus === "analyzing" || connStatus === "publishing"}
               onCameraStateChange={handleCameraStateChange}
+              isOnline={isOnline}
             />
           </div>
         </div>
