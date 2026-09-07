@@ -18,8 +18,6 @@ import ModuleHistory from "@/components/modules/ModuleHistory";
 import ModuleOurApp from "@/components/modules/ModuleOurApp";
 import ModuleResources from "@/components/modules/ModuleResources";
 import ModuleIncidentStats from "@/components/modules/ModuleIncidentStats";
-import ModuleOfflineUploads from "@/components/modules/ModuleOfflineUploads";
-import OfflineUploadDetailModal from "@/components/OfflineUploadDetailModal";
 import DroneLocationWidget from "@/components/DroneLocationWidget";
 
 interface DashboardProps {
@@ -44,7 +42,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
   const [analysisError, setAnalysisError] = useState<{ type: ErrorType; message: string } | null>(null);
   const [history, setHistory] = useState<AnalysisHistoryEntry[]>([]);
   const [incidents, setIncidents] = useState<AnalysisHistoryEntry[]>([]);
-  const [selectedOfflineCaptureId, setSelectedOfflineCaptureId] = useState<string | null>(null);
 
   useEffect(() => {
     setHistory(getHistory());
@@ -272,25 +269,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             {/* MODULE 7 — Our App */}
             {activeModule === "ourapp" && <ModuleOurApp />}
 
-            {/* MODULE 5 — Offline Uploads */}
-            {activeModule === "offlineUploads" && (
-              <ModuleOfflineUploads
-                onSelectCapture={(captureId) => setSelectedOfflineCaptureId(captureId)}
-              />
-            )}
-
           </div>
         </main>
       </div>
-
-      {/* Offline Upload Detail Modal */}
-      {selectedOfflineCaptureId && (
-        <OfflineUploadDetailModal
-          captureId={selectedOfflineCaptureId}
-          isOpen={true}
-          onClose={() => setSelectedOfflineCaptureId(null)}
-        />
-      )}
     </div>
   );
 }
