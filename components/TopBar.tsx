@@ -18,6 +18,7 @@ const MODULE_LABELS: Record<ModuleId, { title: string; sub: string }> = {
   battery:   { title: "Drone Battery & Flight Status", sub: "Simulation data — no physical drone connected" },
   incidents: { title: "Incident Management", sub: "Track, assign teams, and manage rescue operations" },
   history:   { title: "Analysis History", sub: "Past flood scene analyses" },
+  offlineUploads: { title: "Offline Uploads", sub: "Cached captures from offline mode" },
   ourapp:    { title: "About AeroAiRescue", sub: "AI-Powered Disaster Response Platform" },
   resources: { title: "Resource Allocation", sub: "Rescue team calculation & requirements" },
   stats:     { title: "Incident Statistics", sub: "Trends and disaster response analytics" },

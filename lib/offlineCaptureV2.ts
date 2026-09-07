@@ -5,20 +5,25 @@
  * Database: AeroRescueOfflineV2
  * Object Store: captures
  *
- * Each record contains only what is required:
+ * Each record contains:
  * {
  *   id: string (UUID),
  *   imageDataUrl: string,
  *   capturedAt: string (ISO timestamp),
- *   status: "pending" | "sending" | "sent"
+ *   status: "pending" | "sending" | "sent",
+ *   latitude?: number (optional GPS latitude),
+ *   longitude?: number (optional GPS longitude),
+ *   analysisResult?: AnalysisResult (optional AI analysis data)
  * }
  *
  * No automatic syncing, no service worker, no background retry.
  * Manual send only when user presses SEND PENDING button.
  */
 
+import type { AnalysisResult } from "@/types";
+
 const DB_NAME = "AeroRescueOfflineV2";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "captures";
 
 export interface OfflineCaptureV2 {
@@ -26,6 +31,9 @@ export interface OfflineCaptureV2 {
   imageDataUrl: string;
   capturedAt: string;
   status: "pending" | "sending" | "sent";
+  latitude?: number;
+  longitude?: number;
+  analysisResult?: AnalysisResult;
 }
 
 let dbInstance: IDBDatabase | null = null;
@@ -287,6 +295,99 @@ export async function deleteCapture(captureId: string): Promise<void> {
       };
     } catch (err) {
       reject(err instanceof Error ? err : new Error("Unknown error during delete"));
+    }
+  });
+}
+
+/**
+ * Get all captures (pending, sending, and sent) from IndexedDB.
+ * Used for displaying the Offline Uploads page.
+ */
+export async function getAllCaptures(): Promise<OfflineCaptureV2[]> {
+  try {
+    const db = await initDb();
+
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction([STORE_NAME], "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.getAll();
+
+        request.onerror = () => {
+          reject(new Error(`Failed to get all captures: ${request.error?.message}`));
+        };
+
+        request.onsuccess = () => {
+          const result = request.result as OfflineCaptureV2[];
+          resolve(result);
+        };
+
+        tx.onerror = () => {
+          reject(new Error(`Transaction failed: ${tx.error?.message}`));
+        };
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("Unknown error during read"));
+      }
+    });
+  } catch (err) {
+    console.error("Error reading all captures:", err);
+    return [];
+  }
+}
+
+/**
+ * Update a capture with analysis result and GPS data.
+ * Called after successful Gemini analysis and Ably publishing.
+ */
+export async function updateCaptureWithAnalysis(
+  captureId: string,
+  analysisResult: AnalysisResult,
+  latitude?: number,
+  longitude?: number
+): Promise<void> {
+  const db = await initDb();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const getRequest = store.get(captureId);
+
+      getRequest.onsuccess = () => {
+        const capture = getRequest.result as OfflineCaptureV2 | undefined;
+        if (!capture) {
+          reject(new Error(`Capture not found: ${captureId}`));
+          return;
+        }
+
+        capture.analysisResult = analysisResult;
+        if (latitude !== undefined) {
+          capture.latitude = latitude;
+        }
+        if (longitude !== undefined) {
+          capture.longitude = longitude;
+        }
+
+        const updateRequest = store.put(capture);
+
+        updateRequest.onerror = () => {
+          reject(new Error(`Failed to update capture: ${updateRequest.error?.message}`));
+        };
+
+        updateRequest.onsuccess = () => {
+          resolve();
+        };
+      };
+
+      getRequest.onerror = () => {
+        reject(new Error(`Failed to get capture for update: ${getRequest.error?.message}`));
+      };
+
+      tx.onerror = () => {
+        reject(new Error(`Transaction failed: ${tx.error?.message}`));
+      };
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error("Unknown error during update"));
     }
   });
 }
