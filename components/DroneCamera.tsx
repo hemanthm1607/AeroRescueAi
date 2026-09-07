@@ -109,20 +109,14 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
   // Capture the current video frame - returns data URL or null on failure
   function captureCurrentFrame(): string | null {
     if (!videoRef.current || !canvasRef.current) {
-      console.error("[OFFLINE-DEBUG] Cannot capture - videoRef or canvasRef is null");
       return null;
     }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    console.log(`[OFFLINE-DEBUG] video.readyState = ${video.readyState}`);
-    console.log(`[OFFLINE-DEBUG] videoWidth = ${video.videoWidth}`);
-    console.log(`[OFFLINE-DEBUG] videoHeight = ${video.videoHeight}`);
-
     // Verify video is ready
     if (video.readyState < 2) {
-      console.error("[OFFLINE-DEBUG] Video not ready - readyState < 2");
       return null;
     }
 
@@ -130,7 +124,6 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
     const videoHeight = video.videoHeight || 0;
 
     if (videoWidth === 0 || videoHeight === 0) {
-      console.error("[OFFLINE-DEBUG] Video dimensions are zero");
       return null;
     }
 
@@ -139,74 +132,49 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
 
     const ctx = canvas.getContext("2d");
     if (!ctx) {
-      console.error("[OFFLINE-DEBUG] Could not get canvas context");
       return null;
     }
 
-    console.log(`[OFFLINE-DEBUG] Drawing video frame to canvas: ${videoWidth}x${videoHeight}`);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
     const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-    console.log(`[OFFLINE-DEBUG] dataUrl length = ${dataUrl?.length || 0}`);
 
     if (!dataUrl || dataUrl.length < 1000) {
-      console.error("[OFFLINE-DEBUG] Data URL is empty or too small");
       return null;
     }
 
-    console.log(`[OFFLINE-DEBUG] Frame captured successfully: ${dataUrl.length} bytes`);
     return dataUrl;
   }
 
-  // Handle the 10-second automatic capture - routes to online or offline flow
+  // Handle the 10-second automatic capture
   function handleAutomaticCapture() {
-    console.log("[OFFLINE-DEBUG] ===AUTOMATIC CAPTURE TRIGGERED===");
-    console.log(`[OFFLINE-DEBUG] isOnline = ${isOnline}`);
-
     setLastAnalysisTime("Just now");
 
     const dataUrl = captureCurrentFrame();
     if (!dataUrl) {
-      console.error("[OFFLINE-DEBUG] captureCurrentFrame returned null - aborting");
       return;
     }
 
     if (!isOnline) {
-      // OFFLINE PATH - direct callback
-      console.log("[OFFLINE-DEBUG] OFFLINE PATH - calling onOfflineCapture");
+      // OFFLINE PATH - save locally
       if (onOfflineCapture) {
-        try {
-          onOfflineCapture(dataUrl);
-          console.log("[OFFLINE-DEBUG] onOfflineCapture returned successfully");
-        } catch (error) {
-          console.error("[OFFLINE-DEBUG] onOfflineCapture threw error:", error);
-        }
-      } else {
-        console.error("[OFFLINE-DEBUG] onOfflineCapture callback not provided!");
+        onOfflineCapture(dataUrl);
       }
     } else {
       // ONLINE PATH - existing Gemini flow
-      console.log("[OFFLINE-DEBUG] ONLINE PATH - calling onAnalyze");
       const base64 = dataUrlToBase64(dataUrl);
       const mime = getMimeFromDataUrl(dataUrl);
       
-      try {
-        onAnalyze(
-          base64,
-          mime,
-          dataUrl,
-          gpsLocation?.latitude,
-          gpsLocation?.longitude
-        );
-        console.log("[OFFLINE-DEBUG] onAnalyze returned successfully");
-      } catch (error) {
-        console.error("[OFFLINE-DEBUG] onAnalyze threw error:", error);
-      }
+      onAnalyze(
+        base64,
+        mime,
+        dataUrl,
+        gpsLocation?.latitude,
+        gpsLocation?.longitude
+      );
     }
   }
 
   function startCountdown() {
-    console.log("[OFFLINE-DEBUG] Starting visual countdown timer");
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
@@ -217,7 +185,6 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
         return next;
       });
     }, 1000);
-    console.log("[OFFLINE-DEBUG] Countdown timer started");
   }
 
   const startCamera = useCallback(async () => {
@@ -280,7 +247,6 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
             startBatteryMonitoring();
 
             // Capture immediately on startup
-            console.log("[OFFLINE-DEBUG] Initial capture on camera start");
             handleAutomaticCapture();
 
             // Start countdown timer (visual only)
@@ -289,14 +255,10 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
             // Start automatic 10-second capture loop
             if (autoLoopIntervalRef.current) {
               clearInterval(autoLoopIntervalRef.current);
-              console.log("[OFFLINE-DEBUG] Cleared existing auto-loop interval");
             }
-            console.log("[OFFLINE-DEBUG] Starting 10-second auto-loop interval");
             autoLoopIntervalRef.current = setInterval(() => {
-              console.log("[OFFLINE-DEBUG] ===AUTO-LOOP TIMER FIRED===");
               handleAutomaticCapture();
             }, 10_000);
-            console.log(`[OFFLINE-DEBUG] Auto-loop interval started with ID: ${autoLoopIntervalRef.current}`);
           } else {
             // Video not ready yet, check again soon
             setTimeout(waitForVideoReady, 100);

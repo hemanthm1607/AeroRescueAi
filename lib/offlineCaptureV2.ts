@@ -1,0 +1,299 @@
+/**
+ * Offline Capture Storage V2
+ *
+ * A clean, minimal IndexedDB utility for storing offline captures on the phone.
+ * Database: AeroRescueOfflineV2
+ * Object Store: captures
+ *
+ * Each record contains only what is required:
+ * {
+ *   id: string (UUID),
+ *   imageDataUrl: string,
+ *   capturedAt: string (ISO timestamp),
+ *   status: "pending" | "sending" | "sent"
+ * }
+ *
+ * No automatic syncing, no service worker, no background retry.
+ * Manual send only when user presses SEND PENDING button.
+ */
+
+const DB_NAME = "AeroRescueOfflineV2";
+const DB_VERSION = 1;
+const STORE_NAME = "captures";
+
+export interface OfflineCaptureV2 {
+  id: string;
+  imageDataUrl: string;
+  capturedAt: string;
+  status: "pending" | "sending" | "sent";
+}
+
+let dbInstance: IDBDatabase | null = null;
+
+/**
+ * Initialize the IndexedDB database.
+ */
+async function initDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (dbInstance) {
+      resolve(dbInstance);
+      return;
+    }
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => {
+      reject(new Error(`Failed to open IndexedDB: ${request.error?.message}`));
+    };
+
+    request.onsuccess = () => {
+      dbInstance = request.result;
+      resolve(dbInstance);
+    };
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+        store.createIndex("status", "status", { unique: false });
+      }
+    };
+  });
+}
+
+/**
+ * Generate a unique ID for a capture.
+ */
+function generateCaptureId(): string {
+  return `capture_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Save a captured frame to IndexedDB.
+ * Returns the capture ID.
+ */
+export async function saveOfflineCapture(imageDataUrl: string): Promise<string> {
+  if (!imageDataUrl || imageDataUrl.length < 1000) {
+    throw new Error(`Invalid image data: size = ${imageDataUrl?.length || 0} bytes (minimum 1000 required)`);
+  }
+
+  const db = await initDb();
+  const id = generateCaptureId();
+
+  const capture: OfflineCaptureV2 = {
+    id,
+    imageDataUrl,
+    capturedAt: new Date().toISOString(),
+    status: "pending",
+  };
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.add(capture);
+
+      request.onerror = () => {
+        reject(new Error(`Failed to save capture: ${request.error?.message}`));
+      };
+
+      request.onsuccess = () => {
+        resolve(id);
+      };
+
+      tx.onerror = () => {
+        reject(new Error(`Transaction failed: ${tx.error?.message}`));
+      };
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error("Unknown error during save"));
+    }
+  });
+}
+
+/**
+ * Get all pending captures from IndexedDB.
+ */
+export async function getPendingCaptures(): Promise<OfflineCaptureV2[]> {
+  try {
+    const db = await initDb();
+
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction([STORE_NAME], "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const index = store.index("status");
+        const request = index.getAll("pending");
+
+        request.onerror = () => {
+          reject(new Error(`Failed to get pending captures: ${request.error?.message}`));
+        };
+
+        request.onsuccess = () => {
+          const result = request.result as OfflineCaptureV2[];
+          resolve(result);
+        };
+
+        tx.onerror = () => {
+          reject(new Error(`Transaction failed: ${tx.error?.message}`));
+        };
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("Unknown error during read"));
+      }
+    });
+  } catch (err) {
+    console.error("Error reading pending captures:", err);
+    return [];
+  }
+}
+
+/**
+ * Get count of pending captures.
+ */
+export async function getPendingCount(): Promise<number> {
+  try {
+    const captures = await getPendingCaptures();
+    return captures.length;
+  } catch (err) {
+    console.error("Error getting pending count:", err);
+    return 0;
+  }
+}
+
+/**
+ * Get a specific capture by ID.
+ */
+export async function getCapture(captureId: string): Promise<OfflineCaptureV2 | null> {
+  try {
+    const db = await initDb();
+
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction([STORE_NAME], "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const request = store.get(captureId);
+
+        request.onerror = () => {
+          reject(new Error(`Failed to get capture: ${request.error?.message}`));
+        };
+
+        request.onsuccess = () => {
+          resolve((request.result as OfflineCaptureV2) || null);
+        };
+
+        tx.onerror = () => {
+          reject(new Error(`Transaction failed: ${tx.error?.message}`));
+        };
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("Unknown error during read"));
+      }
+    });
+  } catch (err) {
+    console.error("Error getting capture:", err);
+    return null;
+  }
+}
+
+/**
+ * Update a capture's status.
+ */
+export async function updateCaptureStatus(
+  captureId: string,
+  status: "pending" | "sending" | "sent"
+): Promise<void> {
+  const db = await initDb();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const getRequest = store.get(captureId);
+
+      getRequest.onsuccess = () => {
+        const capture = getRequest.result as OfflineCaptureV2 | undefined;
+        if (!capture) {
+          reject(new Error(`Capture not found: ${captureId}`));
+          return;
+        }
+
+        capture.status = status;
+        const updateRequest = store.put(capture);
+
+        updateRequest.onerror = () => {
+          reject(new Error(`Failed to update capture: ${updateRequest.error?.message}`));
+        };
+
+        updateRequest.onsuccess = () => {
+          resolve();
+        };
+      };
+
+      getRequest.onerror = () => {
+        reject(new Error(`Failed to get capture for update: ${getRequest.error?.message}`));
+      };
+
+      tx.onerror = () => {
+        reject(new Error(`Transaction failed: ${tx.error?.message}`));
+      };
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error("Unknown error during update"));
+    }
+  });
+}
+
+/**
+ * Delete a capture from IndexedDB.
+ */
+export async function deleteCapture(captureId: string): Promise<void> {
+  const db = await initDb();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.delete(captureId);
+
+      request.onerror = () => {
+        reject(new Error(`Failed to delete capture: ${request.error?.message}`));
+      };
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      tx.onerror = () => {
+        reject(new Error(`Transaction failed: ${tx.error?.message}`));
+      };
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error("Unknown error during delete"));
+    }
+  });
+}
+
+/**
+ * Clear all captures from the database (for testing/debugging).
+ */
+export async function clearAllCaptures(): Promise<void> {
+  const db = await initDb();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.clear();
+
+      request.onerror = () => {
+        reject(new Error(`Failed to clear captures: ${request.error?.message}`));
+      };
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      tx.onerror = () => {
+        reject(new Error(`Transaction failed: ${tx.error?.message}`));
+      };
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error("Unknown error during clear"));
+    }
+  });
+}
