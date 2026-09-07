@@ -193,34 +193,38 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
   // Always update the ref to the latest function
   useEffect(() => {
     handleAutomaticCaptureFnRef.current = () => {
-      console.log("[OFFLINE-1] AUTO TIMER FIRED - isOnline:", isOnlineRef.current);
+      // CHECK ACTUAL NETWORK STATE AT CAPTURE TIME, NOT STALE PROP
+      const capturedWhileOffline = !navigator.onLine;
+      console.log("[OFFLINE-FLOW-1] TIMER FIRED");
+      console.log(`[OFFLINE-FLOW-3] CAPTURE NETWORK STATUS: ${capturedWhileOffline ? "OFFLINE" : "ONLINE"}`);
+      
       setLastAnalysisTime("Just now");
 
       const dataUrl = captureCurrentFrame();
-      console.log("[OFFLINE-2] FRAME CAPTURED:", dataUrl ? `${dataUrl.length} bytes` : "NULL");
+      console.log("[OFFLINE-FLOW-2] FRAME CAPTURED:", dataUrl ? `${dataUrl.length} bytes` : "NULL");
       
       if (!dataUrl) {
-        console.log("[OFFLINE-2] Frame capture failed - returning");
+        console.log("[OFFLINE-FLOW-2] Frame capture failed - returning");
         return;
       }
 
-      if (!isOnlineRef.current) {
-        // OFFLINE PATH - save locally
-        console.log("[OFFLINE-4] onOfflineCapture called");
+      if (capturedWhileOffline) {
+        // OFFLINE PATH - save locally immediately
+        console.log("[OFFLINE-FLOW-4] OFFLINE CAPTURE CALLBACK");
         if (onOfflineCaptureRef.current) {
           setDebugOfflineCallback(prev => prev + 1);
           try {
             onOfflineCaptureRef.current(dataUrl);
-            console.log("[OFFLINE-4] onOfflineCapture callback invoked successfully");
+            console.log("[OFFLINE-FLOW-4] onOfflineCapture callback invoked successfully");
           } catch (error) {
-            console.error("[OFFLINE-4] onOfflineCapture threw error:", error);
+            console.error("[OFFLINE-FLOW-4] onOfflineCapture threw error:", error);
           }
         } else {
-          console.error("[OFFLINE-4] onOfflineCapture callback is undefined!");
+          console.error("[OFFLINE-FLOW-4] onOfflineCapture callback is undefined!");
         }
       } else {
         // ONLINE PATH - existing Gemini flow
-        console.log("[OFFLINE] ONLINE PATH - calling onAnalyze");
+        console.log("[OFFLINE-FLOW] ONLINE PATH - calling onAnalyze");
         const base64 = dataUrlToBase64(dataUrl);
         const mime = getMimeFromDataUrl(dataUrl);
         

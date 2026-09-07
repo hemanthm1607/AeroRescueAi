@@ -31,6 +31,7 @@ export interface OfflineCaptureV2 {
   imageDataUrl: string;
   capturedAt: string;
   status: "pending" | "sending" | "sent";
+  capturedWhileOffline: boolean;
   latitude?: number;
   longitude?: number;
   analysisResult?: AnalysisResult;
@@ -80,16 +81,17 @@ function generateCaptureId(): string {
  * Save a captured frame to IndexedDB.
  * Returns the capture ID.
  */
-export async function saveOfflineCapture(imageDataUrl: string): Promise<string> {
-  console.log("[DEBUG-D] saveOfflineCapture called, imageDataUrl length:", imageDataUrl?.length || 0);
+export async function saveOfflineCapture(imageDataUrl: string, capturedWhileOffline: boolean = true): Promise<string> {
+  console.log("[OFFLINE-FLOW-5] INDEXEDDB SAVE START");
+  console.log("[OFFLINE-FLOW-5] imageDataUrl length:", imageDataUrl?.length || 0);
   
   if (!imageDataUrl || imageDataUrl.length < 1000) {
     const errorMsg = `Invalid image data: size = ${imageDataUrl?.length || 0} bytes (minimum 1000 required)`;
-    console.error("[DEBUG-D] Validation failed:", errorMsg);
+    console.error("[OFFLINE-FLOW-5] Validation failed:", errorMsg);
     throw new Error(errorMsg);
   }
 
-  console.log("[DEBUG-D] Image validation passed, opening DB...");
+  console.log("[OFFLINE-FLOW-5] Image validation passed, opening DB...");
   const db = await initDb();
   const id = generateCaptureId();
 
@@ -98,40 +100,41 @@ export async function saveOfflineCapture(imageDataUrl: string): Promise<string> 
     imageDataUrl,
     capturedAt: new Date().toISOString(),
     status: "pending",
+    capturedWhileOffline,
   };
 
-  console.log("[DEBUG-D] Created capture record, ID:", id);
+  console.log("[OFFLINE-FLOW-5] Created capture record, ID:", id);
 
   return new Promise((resolve, reject) => {
     try {
       const tx = db.transaction([STORE_NAME], "readwrite");
-      console.log("[DEBUG-D] Transaction started");
+      console.log("[OFFLINE-FLOW-5] Transaction started");
       const store = tx.objectStore(STORE_NAME);
       const request = store.add(capture);
 
       request.onerror = () => {
         const errorMsg = `Failed to save capture: ${request.error?.message}`;
-        console.error("[DEBUG-D] Request error:", errorMsg);
+        console.error("[OFFLINE-FLOW-5] Request error:", errorMsg);
         reject(new Error(errorMsg));
       };
 
       request.onsuccess = () => {
-        console.log("[DEBUG-E] Save request successful");
+        console.log("[OFFLINE-FLOW-6] IndexedDB save SUCCESS, ID:", id);
         resolve(id);
       };
 
       tx.onerror = () => {
         const errorMsg = `Transaction failed: ${tx.error?.message}`;
-        console.error("[DEBUG-D] Transaction error:", errorMsg);
+        console.error("[OFFLINE-FLOW-5] Transaction error:", errorMsg);
         reject(new Error(errorMsg));
       };
 
       tx.oncomplete = () => {
-        console.log("[DEBUG-E] Transaction complete");
+        console.log("[OFFLINE-FLOW-7] STORED CAPTURE ID:", id);
       };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error during save";
-      console.error("[DEBUG-D] Exception:", errorMsg);
+      console.error("[OFFLINE-FLOW-5] Exception:", errorMsg);
       reject(err instanceof Error ? err : new Error(errorMsg));
     }
   });

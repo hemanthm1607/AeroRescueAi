@@ -322,19 +322,19 @@ export default function DronePage() {
 
   // ── Handle offline capture (callback from DroneCamera when offline) ────────
   const handleOfflineCapture = useCallback(async (imageDataUrl: string) => {
-    console.log("[OFFLINE-4] onOfflineCapture called");
-    console.log("[OFFLINE-5] imageDataUrl length:", imageDataUrl?.length || 0);
+    console.log("[OFFLINE-FLOW-4] onOfflineCapture called");
+    console.log("[OFFLINE-FLOW-5] imageDataUrl length:", imageDataUrl?.length || 0);
     
     try {
-      // Save to IndexedDB
-      console.log("[OFFLINE-5] Saving to IndexedDB start");
-      await saveOfflineCapture(imageDataUrl);
-      console.log("[OFFLINE-6] IndexedDB save SUCCESS");
+      // Save to IndexedDB with capturedWhileOffline = true
+      console.log("[OFFLINE-FLOW-5] Saving to IndexedDB start");
+      await saveOfflineCapture(imageDataUrl, true);
+      console.log("[OFFLINE-FLOW-6] IndexedDB save SUCCESS");
       setDebugSavedCount(prev => prev + 1);
       
       // Update pending count
       const count = await getPendingCount();
-      console.log("[OFFLINE-7] Pending count updated:", count);
+      console.log("[OFFLINE-FLOW-8] OFFLINE UPLOADS READ COUNT:", count);
       setPendingCaptureCount(count);
       
       // Show feedback
@@ -344,7 +344,7 @@ export default function DronePage() {
       }, 2000);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[OFFLINE-6] IndexedDB save FAILED:", errorMsg);
+      console.error("[OFFLINE-FLOW-6] IndexedDB save FAILED:", errorMsg);
       setStatusMessage("Failed to save capture locally");
       setTimeout(() => {
         setStatusMessage("");
@@ -464,7 +464,7 @@ export default function DronePage() {
         const capture = captures[i];
         
         try {
-          console.log(`[OFFLINE-9] SEND PENDING started for capture ${i + 1}/${captures.length}`);
+          console.log(`[OFFLINE-FLOW-9] SEND PENDING START for capture ${i + 1}/${captures.length}`);
           
           // Mark as sending
           await updateCaptureStatus(capture.id, "sending");
@@ -475,7 +475,7 @@ export default function DronePage() {
           const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
           
           // Step 1: Send to Gemini API
-          console.log("[OFFLINE-10] Gemini analysis started");
+          console.log("[OFFLINE-FLOW-10] ANALYSIS START");
           const res = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -491,7 +491,7 @@ export default function DronePage() {
           }
 
           const result: AnalysisResult = data.result;
-          console.log("[OFFLINE-11] Gemini analysis success");
+          console.log("[OFFLINE-FLOW-11] ANALYSIS SUCCESS");
 
           // Step 2: Resize preview
           let smallPreview = capture.imageDataUrl;
@@ -502,7 +502,7 @@ export default function DronePage() {
           }
 
           // Step 3: Publish to Ably
-          console.log("[OFFLINE-12] Ably publish started");
+          console.log("[OFFLINE-FLOW-12] ABLY PUBLISH STARTED");
           const ch = channelRef.current;
           if (!ch) {
             throw new Error("Not connected to Ably");
@@ -517,11 +517,11 @@ export default function DronePage() {
           };
 
           await ch.publish(EVENT_ANALYSIS, payload);
-          console.log("[OFFLINE-13] Ably publish success");
+          console.log("[OFFLINE-FLOW-12] ABLY PUBLISH SUCCESS");
 
           // Step 4: Update capture with analysis result and mark as sent
           // DO NOT DELETE - keep the capture locally with analysis data
-          console.log("[OFFLINE-14] Marking capture as sent with analysis data");
+          console.log("[OFFLINE-FLOW-13] CAPTURE MARKED SENT");
           await updateCaptureWithAnalysis(
             capture.id,
             result,
@@ -529,12 +529,13 @@ export default function DronePage() {
             capture.longitude
           );
           await updateCaptureStatus(capture.id, "sent");
+          console.log("[OFFLINE-FLOW-14] CAPTURE KEPT IN INDEXEDDB");
           
           successCount++;
           setSendProgress({ sent: successCount, total: captures.length });
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Unknown error";
-          console.error(`[OFFLINE-ERROR] Failed to send capture ${i + 1}:`, msg);
+          console.error(`[OFFLINE-FLOW-ERROR] Failed to send capture ${i + 1}:`, msg);
           // Keep the capture pending, continue with next one
           await updateCaptureStatus(capture.id, "pending");
         }
@@ -559,7 +560,7 @@ export default function DronePage() {
       }, 3000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[OFFLINE-ERROR] Send pending error:", msg);
+      console.error("[OFFLINE-FLOW-ERROR] Send pending error:", msg);
       setStatusMessage("❌ Failed to send pending captures");
 
       setTimeout(() => {

@@ -34,12 +34,12 @@ export default function ModuleOfflineUploads({
     setIsLoading(true);
     setError(null);
     try {
-      console.log("[OFFLINE-8] Offline Uploads loading captures...");
+      console.log("[OFFLINE-FLOW-8] Offline Uploads loading captures...");
       const data = await getAllCaptures();
-      console.log("[OFFLINE-8] Offline Uploads loaded", data.length, "captures");
+      console.log("[OFFLINE-FLOW-8] Offline Uploads loaded", data.length, "captures");
       setCaptures(data);
     } catch (err) {
-      console.error("[OFFLINE-8] Error loading offline captures:", err);
+      console.error("[OFFLINE-FLOW-8] Error loading offline captures:", err);
       setError(
         err instanceof Error ? err.message : "Failed to load captures"
       );
