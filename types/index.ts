@@ -38,7 +38,7 @@ export interface AnalysisHistoryEntry {
   locationName?: string;
   // New incident management fields
   status?: IncidentStatus;
-  assignedTeam?: RescueTeam;
+  assignedTeams?: RescueTeam[];
 }
 
 export interface DroneLocationUpdate {

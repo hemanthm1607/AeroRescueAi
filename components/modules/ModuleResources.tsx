@@ -26,18 +26,21 @@ export default function ModuleResources({ entries }: ModuleResourcesProps) {
 
   // Update team statuses based on assigned incidents
   entries.forEach((entry) => {
-    if (entry.assignedTeam && entry.status && entry.status !== "NEW") {
+    if (entry.assignedTeams && entry.assignedTeams.length > 0 && entry.status && entry.status !== "NEW") {
       const statusMap: Record<string, string> = {
         ASSIGNED: "ASSIGNED",
         EN_ROUTE: "EN_ROUTE",
         RESCUED: "COMPLETED",
       };
-      teamStatuses[entry.assignedTeam] = {
-        status: statusMap[entry.status] || "ASSIGNED",
-        incidentId: entry.incidentId,
-        priority: entry.result.rescuePriority,
-        peopleCount: entry.result.peopleDetected,
-      };
+      // Mark each assigned team with status from this incident
+      entry.assignedTeams.forEach(team => {
+        teamStatuses[team] = {
+          status: statusMap[entry.status || "NEW"] || "ASSIGNED",
+          incidentId: entry.incidentId,
+          priority: entry.result.rescuePriority,
+          peopleCount: entry.result.peopleDetected,
+        };
+      });
     }
   });
 
@@ -91,7 +94,7 @@ export default function ModuleResources({ entries }: ModuleResourcesProps) {
 
   // Find recommended team for unassigned high/critical incidents
   const unassignedCritical = entries.filter(
-    (e) => (e.result.rescuePriority === "CRITICAL" || e.result.rescuePriority === "HIGH") && !e.assignedTeam
+    (e) => (e.result.rescuePriority === "CRITICAL" || e.result.rescuePriority === "HIGH") && (!e.assignedTeams || e.assignedTeams.length === 0)
   );
   const recommendedTeam = availableCount > 0 ? RESCUE_TEAMS.find((team) => teamStatuses[team].status === "AVAILABLE") : null;
 

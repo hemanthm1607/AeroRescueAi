@@ -7,7 +7,7 @@ import { formatTimestamp, formatCoordinates } from "./utils";
  */
 
 export function exportIncidentToPDF(incident: AnalysisHistoryEntry): void {
-  const { result, timestamp, incidentId, latitude, longitude, status, assignedTeam } = incident;
+  const { result, timestamp, incidentId, latitude, longitude, status, assignedTeams } = incident;
   
   // Create a new window for the PDF content
   const printWindow = window.open("", "_blank", "width=800,height=600");
@@ -260,8 +260,8 @@ export function exportIncidentToPDF(incident: AnalysisHistoryEntry): void {
                 <div class="value">${status || 'NEW'}</div>
             </div>
             <div class="info-item">
-                <div class="label">Assigned Team</div>
-                <div class="value">${assignedTeam || 'Not assigned'}</div>
+                <div class="label">Assigned Teams</div>
+                <div class="value">${assignedTeams && assignedTeams.length > 0 ? assignedTeams.join(', ') : 'Not assigned'}</div>
             </div>
         </div>
     </div>

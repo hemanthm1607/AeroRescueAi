@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils";
 
 interface TeamAssignmentModalProps {
   incidentId: string;
-  currentTeam?: RescueTeam;
+  currentTeams?: RescueTeam[];
   currentStatus?: IncidentStatus;
-  onAssignTeam: (team: RescueTeam) => void;
-  onRemoveTeam: () => void;
+  onAssignTeams: (teams: RescueTeam[]) => void;
+  onRemoveTeam: (team: RescueTeam) => void;
   onUpdateStatus: (status: IncidentStatus) => void;
   onClose: () => void;
 }
@@ -27,21 +27,20 @@ const STATUS_COLORS: Record<IncidentStatus, string> = {
 
 export default function TeamAssignmentModal({
   incidentId,
-  currentTeam,
+  currentTeams,
   currentStatus,
-  onAssignTeam,
+  onAssignTeams,
   onRemoveTeam,
   onUpdateStatus,
   onClose
 }: TeamAssignmentModalProps) {
-  const [selectedTeam, setSelectedTeam] = useState<RescueTeam | undefined>(currentTeam);
+  const [selectedTeams, setSelectedTeams] = useState<RescueTeam[]>(currentTeams || []);
   const [selectedStatus, setSelectedStatus] = useState<IncidentStatus>(currentStatus || "NEW");
 
   const handleSave = () => {
-    if (selectedTeam && selectedTeam !== currentTeam) {
-      onAssignTeam(selectedTeam);
-    } else if (!selectedTeam && currentTeam) {
-      onRemoveTeam();
+    // Only call onAssignTeams if teams changed
+    if (JSON.stringify(selectedTeams) !== JSON.stringify(currentTeams || [])) {
+      onAssignTeams(selectedTeams);
     }
     
     if (selectedStatus !== currentStatus) {
@@ -49,6 +48,14 @@ export default function TeamAssignmentModal({
     }
     
     onClose();
+  };
+
+  const toggleTeam = (team: RescueTeam) => {
+    setSelectedTeams(prev => 
+      prev.includes(team) 
+        ? prev.filter(t => t !== team)
+        : [...prev, team]
+    );
   };
 
   return (
@@ -77,37 +84,24 @@ export default function TeamAssignmentModal({
           {/* Team Assignment */}
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-3">
-              Rescue Team Assignment
+              Rescue Teams Assignment
             </label>
+            <p className="text-xs text-slate-500 mb-3">Select one or more teams to assign</p>
             <div className="space-y-2">
-              {/* No team option */}
-              <button
-                onClick={() => setSelectedTeam(undefined)}
-                className={cn(
-                  "w-full flex items-center justify-between p-3 rounded-lg border transition-all",
-                  !selectedTeam
-                    ? "bg-slate-600/30 border-slate-500 text-slate-200"
-                    : "bg-slate-800/50 border-slate-700 text-slate-400 hover:bg-slate-700/50"
-                )}
-              >
-                <span>No team assigned</span>
-                {!selectedTeam && <Check className="w-4 h-4 text-green-400" />}
-              </button>
-              
               {/* Team options */}
               {RESCUE_TEAMS.map((team) => (
                 <button
                   key={team}
-                  onClick={() => setSelectedTeam(team)}
+                  onClick={() => toggleTeam(team)}
                   className={cn(
                     "w-full flex items-center justify-between p-3 rounded-lg border transition-all",
-                    selectedTeam === team
+                    selectedTeams.includes(team)
                       ? "bg-blue-500/20 border-blue-500 text-blue-300"
                       : "bg-slate-800/50 border-slate-700 text-slate-400 hover:bg-slate-700/50"
                   )}
                 >
                   <span>{team}</span>
-                  {selectedTeam === team && <Check className="w-4 h-4 text-blue-400" />}
+                  {selectedTeams.includes(team) && <Check className="w-4 h-4 text-blue-400" />}
                 </button>
               ))}
             </div>

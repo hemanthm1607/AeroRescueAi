@@ -41,7 +41,7 @@ export default function IncidentHistoryCard({
   const [isExporting, setIsExporting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const { result, timestamp, incidentId, latitude, longitude, status, assignedTeam } = incident;
+  const { result, timestamp, incidentId, latitude, longitude, status, assignedTeams } = incident;
 
   const handleExportPDF = async () => {
     try {
@@ -52,16 +52,19 @@ export default function IncidentHistoryCard({
     }
   };
 
-  const handleAssignTeam = (team: RescueTeam) => {
+  const handleAssignTeam = (teams: RescueTeam[]) => {
     if (incidentId) {
-      assignRescueTeam(incidentId, team);
+      // Remove all existing team assignments first
+      removeTeamAssignment(incidentId);
+      // Then add each new team
+      teams.forEach(team => assignRescueTeam(incidentId, team));
       onUpdate?.();
     }
   };
 
-  const handleRemoveTeam = () => {
+  const handleRemoveTeam = (team: RescueTeam) => {
     if (incidentId) {
-      removeTeamAssignment(incidentId);
+      removeTeamAssignment(incidentId, team);
       onUpdate?.();
     }
   };
@@ -203,11 +206,15 @@ export default function IncidentHistoryCard({
           {/* Team and Location Row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div className="bg-slate-800/30 border border-slate-700/50 rounded-lg p-3">
-              <div className="text-xs text-slate-400 mb-1">Assigned Team</div>
-              {assignedTeam ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-400" />
-                  <span className="text-sm font-semibold text-blue-300">{assignedTeam}</span>
+              <div className="text-xs text-slate-400 mb-1">Assigned Teams</div>
+              {assignedTeams && assignedTeams.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {assignedTeams.map((team) => (
+                    <div key={team} className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-400" />
+                      <span className="text-sm font-semibold text-blue-300">{team}</span>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <span className="text-sm text-slate-500">Not assigned</span>
@@ -278,9 +285,9 @@ export default function IncidentHistoryCard({
       {showTeamModal && (
         <TeamAssignmentModal
           incidentId={incidentId || incident.id}
-          currentTeam={assignedTeam}
+          currentTeams={assignedTeams}
           currentStatus={status}
-          onAssignTeam={handleAssignTeam}
+          onAssignTeams={handleAssignTeam}
           onRemoveTeam={handleRemoveTeam}
           onUpdateStatus={handleUpdateStatus}
           onClose={() => setShowTeamModal(false)}

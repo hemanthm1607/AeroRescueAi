@@ -189,8 +189,8 @@ export default function ModuleIncidentStats({ entries }: ModuleIncidentStatsProp
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Team Coverage</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {[
-            { label: "Assigned", count: entries.filter(e => e.assignedTeam).length, color: "blue" },
-            { label: "Unassigned", count: entries.filter(e => !e.assignedTeam).length, color: "slate" },
+            { label: "Assigned", count: entries.filter(e => e.assignedTeams && e.assignedTeams.length > 0).length, color: "blue" },
+            { label: "Unassigned", count: entries.filter(e => !e.assignedTeams || e.assignedTeams.length === 0).length, color: "slate" },
             { label: "High/Critical", count: entries.filter(e => (e.result.rescuePriority === "HIGH" || e.result.rescuePriority === "CRITICAL")).length, color: "red" },
             { label: "With Location", count: entries.filter(e => e.latitude !== undefined && e.longitude !== undefined).length, color: "green" },
           ].map((item) => {

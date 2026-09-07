@@ -220,10 +220,10 @@ export default function EmergencyAlertBar({ onViewIncident }: EmergencyAlertBarP
               </div>
             )}
             
-            {incident.assignedTeam && (
+            {incident.assignedTeams && incident.assignedTeams.length > 0 && (
               <div className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                <span>{incident.assignedTeam}</span>
+                <span>{incident.assignedTeams.join(', ')}</span>
               </div>
             )}
             
