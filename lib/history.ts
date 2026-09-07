@@ -25,3 +25,10 @@ export function clearHistory(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEY);
 }
+
+export function deleteHistoryEntry(entryId: string): void {
+  if (typeof window === "undefined") return;
+  const existing = getHistory();
+  const updated = existing.filter(entry => entry.id !== entryId);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+}

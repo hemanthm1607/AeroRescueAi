@@ -5,7 +5,7 @@ import type { User, AnalysisResult, AnalysisHistoryEntry, InputMode } from "@/ty
 import type { ErrorType } from "@/components/ErrorState";
 import type { ModuleId } from "@/components/Sidebar";
 import { generateId, formatTimestamp, generateIncidentId } from "@/lib/utils";
-import { addHistoryEntry, getHistory } from "@/lib/history";
+import { addHistoryEntry, getHistory, deleteHistoryEntry } from "@/lib/history";
 import { addOrUpdateIncident, getIncidents } from "@/lib/incidents";
 import { requestGeoLocation } from "@/lib/geo";
 
@@ -253,7 +253,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
             {/* MODULE 4 — History */}
             {activeModule === "history" && (
-              <ModuleHistory entries={history} onClear={() => setHistory([])} />
+              <ModuleHistory 
+                entries={history} 
+                onClear={() => setHistory([])} 
+                onDelete={(entryId) => {
+                  deleteHistoryEntry(entryId);
+                  setHistory(getHistory());
+                }}
+              />
             )}
 
             {/* MODULE 5 — Resource Allocation */}

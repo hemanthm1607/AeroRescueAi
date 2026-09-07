@@ -23,9 +23,10 @@ import AnalysisResult from "@/components/AnalysisResult";
 interface AnalysisHistoryProps {
   entries: AnalysisHistoryEntry[];
   onClear: () => void;
+  onDelete?: (entryId: string) => void;
 }
 
-export default function AnalysisHistory({ entries, onClear }: AnalysisHistoryProps) {
+export default function AnalysisHistory({ entries, onClear, onDelete }: AnalysisHistoryProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selected = entries.find((e) => e.id === selectedId) ?? null;
@@ -34,6 +35,13 @@ export default function AnalysisHistory({ entries, onClear }: AnalysisHistoryPro
     clearHistory();
     setSelectedId(null);
     onClear();
+  }
+
+  function handleDelete(entryId: string) {
+    onDelete?.(entryId);
+    if (selectedId === entryId) {
+      setSelectedId(null);
+    }
   }
 
   if (entries.length === 0) {
@@ -96,6 +104,7 @@ export default function AnalysisHistory({ entries, onClear }: AnalysisHistoryPro
                 onClick={() =>
                   setSelectedId((prev) => (prev === entry.id ? null : entry.id))
                 }
+                onDelete={handleDelete}
               />
             ))}
           </div>
@@ -132,10 +141,28 @@ interface HistoryRowProps {
   entry: AnalysisHistoryEntry;
   isSelected: boolean;
   onClick: () => void;
+  onDelete: (entryId: string) => void;
 }
 
-function HistoryRow({ entry, isSelected, onClick }: HistoryRowProps) {
+function HistoryRow({ entry, isSelected, onClick, onDelete }: HistoryRowProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { result, imageThumbnail, timestamp, inputMode } = entry;
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete(entry.id);
+    setShowDeleteConfirm(false);
+  };
+
+  const cancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowDeleteConfirm(false);
+  };
 
   return (
     <button
@@ -207,6 +234,15 @@ function HistoryRow({ entry, isSelected, onClick }: HistoryRowProps) {
         </div>
       </div>
 
+      {/* Delete button */}
+      <button
+        onClick={handleDeleteClick}
+        className="p-1.5 rounded-lg bg-slate-700/40 hover:bg-red-700/30 border border-slate-600/40 hover:border-red-500/50 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+        title="Delete history record"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+
       {/* Chevron */}
       <ChevronRight
         className={cn(
@@ -216,6 +252,41 @@ function HistoryRow({ entry, isSelected, onClick }: HistoryRowProps) {
             : "text-slate-600 group-hover:text-slate-400"
         )}
       />
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={cancelDelete}
+        >
+          <div
+            className="rounded-xl border border-red-500/30 bg-red-950/40 shadow-2xl max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-100 mb-2">
+              Delete History Record
+            </h3>
+            <p className="text-sm text-slate-300 mb-6">
+              Are you sure you want to delete this history record? This action
+              cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-200 transition-colors font-medium text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-lg border border-red-500/50 bg-red-600/20 hover:bg-red-600/30 text-red-300 hover:text-red-200 transition-colors font-medium text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </button>
   );
 }

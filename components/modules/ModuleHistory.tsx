@@ -7,9 +7,10 @@ import AnalysisHistory from "@/components/AnalysisHistory";
 interface ModuleHistoryProps {
   entries: AnalysisHistoryEntry[];
   onClear: () => void;
+  onDelete?: (entryId: string) => void;
 }
 
-export default function ModuleHistory({ entries, onClear }: ModuleHistoryProps) {
+export default function ModuleHistory({ entries, onClear, onDelete }: ModuleHistoryProps) {
   return (
     <div className="flex flex-col gap-6">
       {/* Page header */}
@@ -29,7 +30,7 @@ export default function ModuleHistory({ entries, onClear }: ModuleHistoryProps) 
       </div>
 
       {/* Delegate to existing AnalysisHistory component — all functionality preserved */}
-      <AnalysisHistory entries={entries} onClear={onClear} />
+      <AnalysisHistory entries={entries} onClear={onClear} onDelete={onDelete} />
     </div>
   );
 }
