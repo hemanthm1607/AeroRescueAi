@@ -128,6 +128,8 @@ export default function DronePage() {
   const [pendingCaptureCount, setPendingCaptureCount] = useState<number>(0);
   const [isSendingPending, setIsSendingPending] = useState<boolean>(false);
   const [sendProgress, setSendProgress] = useState<{ sent: number; total: number } | null>(null);
+  const [debugCameraCounters, setDebugCameraCounters] = useState({ timerFired: 0, frameCaptured: 0, offlineCallback: 0 });
+  const [debugSavedCount, setDebugSavedCount] = useState(0);
   const ablyRef = useRef<Realtime | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const gpsWatcherRef = useRef<number | null>(null);
@@ -326,6 +328,7 @@ export default function DronePage() {
       console.log("[DEBUG-D] INDEXEDDB SAVE START");
       await saveOfflineCapture(imageDataUrl);
       console.log("[DEBUG-E] INDEXEDDB SAVE SUCCESS");
+      setDebugSavedCount(prev => prev + 1);
       
       // Update pending count
       const count = await getPendingCount();
@@ -583,10 +586,10 @@ export default function DronePage() {
             <span className="text-blue-300">Offline pipeline:</span>
           </p>
           <p className="text-xs font-mono text-slate-400 mb-2">
-            A: {isOnline ? "⏸" : "🔴"} | B: {isOnline ? "⏸" : "?"} | C: {pendingCaptureCount > 0 ? "✓" : "?"} | D: {pendingCaptureCount > 0 ? "✓" : "?"} | E: {pendingCaptureCount > 0 ? "✓" : "?"}
+            Timer: {debugCameraCounters.timerFired} | Frame: {debugCameraCounters.frameCaptured} | Callback: {debugCameraCounters.offlineCallback} | Saved: {debugSavedCount}
           </p>
           <p className="text-xs font-mono text-orange-300">
-            Pending: {pendingCaptureCount}
+            Pending: {pendingCaptureCount} | Online: {isOnline ? "YES" : "NO"}
           </p>
         </div>
 
@@ -617,6 +620,7 @@ export default function DronePage() {
               onCameraStateChange={handleCameraStateChange}
               isOnline={isOnline}
               onOfflineCapture={handleOfflineCapture}
+              onDebugCountersChange={setDebugCameraCounters}
             />
           </div>
         </div>

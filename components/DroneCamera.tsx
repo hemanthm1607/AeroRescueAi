@@ -30,11 +30,12 @@ interface DroneCameraProps {
   onCameraStateChange?: (isActive: boolean) => void;
   isOnline?: boolean;
   onOfflineCapture?: (imageDataUrl: string) => Promise<void> | void;
+  onDebugCountersChange?: (counters: { timerFired: number; frameCaptured: number; offlineCallback: number }) => void;
 }
 
 type CameraState = "idle" | "requesting" | "active" | "error" | "captured";
 
-export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChange, isOnline = true, onOfflineCapture }: DroneCameraProps) {
+export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChange, isOnline = true, onOfflineCapture, onDebugCountersChange }: DroneCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -52,11 +53,25 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
   const [countdown, setCountdown] = useState(10);
   const [lastAnalysisTime, setLastAnalysisTime] = useState<string | null>(null);
   const [gpsLocation, setGpsLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  
+  // DEBUG COUNTERS
+  const [debugTimerFired, setDebugTimerFired] = useState(0);
+  const [debugFrameCaptured, setDebugFrameCaptured] = useState(0);
+  const [debugOfflineCallback, setDebugOfflineCallback] = useState(0);
 
   // Update ref when onCameraStateChange changes
   useEffect(() => {
     onCameraStateChangeRef.current = onCameraStateChange;
   }, [onCameraStateChange]);
+
+  // Notify parent of debug counter changes
+  useEffect(() => {
+    onDebugCountersChange?.({
+      timerFired: debugTimerFired,
+      frameCaptured: debugFrameCaptured,
+      offlineCallback: debugOfflineCallback,
+    });
+  }, [debugTimerFired, debugFrameCaptured, debugOfflineCallback, onDebugCountersChange]);
 
   // Clean up stream and auto-loop on unmount
   useEffect(() => {
@@ -150,49 +165,60 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
     }
 
     console.log(`[DEBUG-B] Frame captured: ${dataUrl.length} bytes`);
+    setDebugFrameCaptured(prev => prev + 1);
     return dataUrl;
   }
 
-  // Handle the 10-second automatic capture
-  function handleAutomaticCapture() {
-    console.log("[DEBUG-A] AUTO TIMER FIRED - isOnline:", isOnline);
-    setLastAnalysisTime("Just now");
+  const handleAutomaticCaptureFnRef = useRef<() => void>(() => {});
+  
+  // Always update the ref to the latest function
+  useEffect(() => {
+    handleAutomaticCaptureFnRef.current = () => {
+      console.log("[DEBUG-A] AUTO TIMER FIRED - isOnline:", isOnline);
+      setLastAnalysisTime("Just now");
 
-    const dataUrl = captureCurrentFrame();
-    console.log("[DEBUG-B] FRAME CAPTURED:", dataUrl ? `${dataUrl.length} bytes` : "NULL");
-    
-    if (!dataUrl) {
-      console.log("[DEBUG-B] Frame capture failed - returning");
-      return;
-    }
+      const dataUrl = captureCurrentFrame();
+      console.log("[DEBUG-B] FRAME CAPTURED:", dataUrl ? `${dataUrl.length} bytes` : "NULL");
+      
+      if (!dataUrl) {
+        console.log("[DEBUG-B] Frame capture failed - returning");
+        return;
+      }
 
-    if (!isOnline) {
-      // OFFLINE PATH - save locally
-      console.log("[DEBUG-C] OFFLINE PATH - calling onOfflineCapture");
-      if (onOfflineCapture) {
-        try {
-          onOfflineCapture(dataUrl);
-          console.log("[DEBUG-C] onOfflineCapture callback invoked successfully");
-        } catch (error) {
-          console.error("[DEBUG-C] onOfflineCapture threw error:", error);
+      if (!isOnline) {
+        // OFFLINE PATH - save locally
+        console.log("[DEBUG-C] OFFLINE PATH - calling onOfflineCapture");
+        if (onOfflineCapture) {
+          setDebugOfflineCallback(prev => prev + 1);
+          try {
+            onOfflineCapture(dataUrl);
+            console.log("[DEBUG-C] onOfflineCapture callback invoked successfully");
+          } catch (error) {
+            console.error("[DEBUG-C] onOfflineCapture threw error:", error);
+          }
+        } else {
+          console.error("[DEBUG-C] onOfflineCapture callback is undefined!");
         }
       } else {
-        console.error("[DEBUG-C] onOfflineCapture callback is undefined!");
+        // ONLINE PATH - existing Gemini flow
+        console.log("[DEBUG] ONLINE PATH - calling onAnalyze");
+        const base64 = dataUrlToBase64(dataUrl);
+        const mime = getMimeFromDataUrl(dataUrl);
+        
+        onAnalyze(
+          base64,
+          mime,
+          dataUrl,
+          gpsLocation?.latitude,
+          gpsLocation?.longitude
+        );
       }
-    } else {
-      // ONLINE PATH - existing Gemini flow
-      console.log("[DEBUG] ONLINE PATH - calling onAnalyze");
-      const base64 = dataUrlToBase64(dataUrl);
-      const mime = getMimeFromDataUrl(dataUrl);
-      
-      onAnalyze(
-        base64,
-        mime,
-        dataUrl,
-        gpsLocation?.latitude,
-        gpsLocation?.longitude
-      );
-    }
+    };
+  }, [isOnline, onOfflineCapture, onAnalyze, gpsLocation]);
+
+  // Handle the 10-second automatic capture (now just calls the ref)
+  function handleAutomaticCapture() {
+    handleAutomaticCaptureFnRef.current();
   }
 
   function startCountdown() {
@@ -280,6 +306,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
             console.log("[DEBUG] Starting 10-second auto-loop interval");
             autoLoopIntervalRef.current = setInterval(() => {
               console.log("[DEBUG-A] AUTO TIMER FIRED (interval callback)");
+              setDebugTimerFired(prev => prev + 1);
               handleAutomaticCapture();
             }, 10_000);
             console.log("[DEBUG] Auto-loop interval started, ID:", autoLoopIntervalRef.current);
