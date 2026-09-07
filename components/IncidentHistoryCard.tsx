@@ -9,11 +9,12 @@ import {
   Settings, 
   Download,
   Image as ImageIcon,
-  Clock
+  Clock,
+  Trash2
 } from "lucide-react";
 import type { AnalysisHistoryEntry, RescueTeam, IncidentStatus } from "@/types";
 import { getSeverityBg, formatTimestamp, formatCoordinates, cn } from "@/lib/utils";
-import { updateIncidentStatus, assignRescueTeam, removeTeamAssignment } from "@/lib/incidents";
+import { updateIncidentStatus, assignRescueTeam, removeTeamAssignment, deleteIncident } from "@/lib/incidents";
 import { exportIncidentToPDF } from "@/lib/pdfExport";
 import { SeverityDot } from "@/components/ui/Badge";
 import TeamAssignmentModal from "./TeamAssignmentModal";
@@ -38,6 +39,7 @@ export default function IncidentHistoryCard({
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { result, timestamp, incidentId, latitude, longitude, status, assignedTeam } = incident;
 
@@ -69,6 +71,14 @@ export default function IncidentHistoryCard({
       updateIncidentStatus(incidentId, newStatus);
       onUpdate?.();
     }
+  };
+
+  const handleDelete = () => {
+    if (incidentId) {
+      deleteIncident(incidentId);
+      onUpdate?.();
+    }
+    setShowDeleteConfirm(false);
   };
 
   return (
@@ -137,6 +147,13 @@ export default function IncidentHistoryCard({
               title="Manage Team"
             >
               <Settings className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-2 rounded-lg bg-slate-800 hover:bg-red-700/30 border border-slate-600 hover:border-red-500/50 text-slate-400 hover:text-red-400 transition-colors"
+              title="Delete Incident"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -276,6 +293,32 @@ export default function IncidentHistoryCard({
           incidentId={incidentId || incident.id}
           onClose={() => setShowPhotoModal(false)}
         />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="rounded-xl border border-red-500/30 bg-red-950/40 shadow-2xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-slate-100 mb-2">Delete Incident</h3>
+            <p className="text-sm text-slate-300 mb-6">
+              Are you sure you want to delete this incident? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-200 transition-colors font-medium text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 rounded-lg border border-red-500/50 bg-red-600/20 hover:bg-red-600/30 text-red-300 hover:text-red-200 transition-colors font-medium text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

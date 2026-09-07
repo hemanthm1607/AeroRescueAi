@@ -63,6 +63,17 @@ export function removeTeamAssignment(incidentId: string): void {
   }
 }
 
+export function deleteIncident(incidentId: string): void {
+  const incidents = getIncidents();
+  const filteredIncidents = incidents.filter(i => i.incidentId !== incidentId);
+  saveIncidents(filteredIncidents);
+  
+  // Also remove associated alerts
+  const alerts = getEmergencyAlerts();
+  const filteredAlerts = alerts.filter(a => a.incidentId !== incidentId);
+  saveAlerts(filteredAlerts);
+}
+
 export function addOrUpdateIncident(entry: AnalysisHistoryEntry): void {
   const incidents = getIncidents();
   
