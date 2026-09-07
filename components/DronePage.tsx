@@ -23,7 +23,6 @@ import {
   getPendingCount,
   updateCaptureStatus,
   updateCaptureWithAnalysis,
-  processPendingCapturesAuto,
   type OfflineCaptureV2,
 } from "@/lib/offlineCaptureV2";
 
@@ -137,6 +136,7 @@ export default function DronePage() {
   const gpsWatcherRef = useRef<number | null>(null);
   const cameraActiveRef = useRef(false);
   const currentGpsRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const sendPendingRef = useRef<(() => Promise<void>) | null>(null);
 
   // ── Load pending count on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -159,9 +159,10 @@ export default function DronePage() {
       const count = await getPendingCount();
       setPendingCaptureCount(count);
       
-      // If there are pending captures, automatically start syncing
-      if (count > 0) {
-        await handleAutoSyncPendingCaptures();
+      // If there are pending captures, automatically trigger the same SEND PENDING logic
+      if (count > 0 && sendPendingRef.current) {
+        console.log("[OFFLINE-AUTO-SYNC] Triggering automatic send of pending captures");
+        await sendPendingRef.current();
       }
     };
 
@@ -435,58 +436,7 @@ export default function DronePage() {
     console.log(`[DronePage] Camera state changed: ${isActive ? "active" : "inactive"}`);
   }, []);
 
-  // ── Auto-sync pending captures when coming online ──────────────────────────
-  const handleAutoSyncPendingCaptures = useCallback(async () => {
-    if (isSendingPending) {
-      console.log("[OFFLINE-AUTO-SYNC] Sync already in progress, skipping");
-      return;
-    }
-
-    setIsSendingPending(true);
-    setSendProgress({ sent: 0, total: 0 });
-
-    try {
-      const ch = channelRef.current;
-      if (!ch) {
-        console.warn("[OFFLINE-AUTO-SYNC] Not connected to Ably, will retry next time");
-        setIsSendingPending(false);
-        return;
-      }
-
-      const result = await processPendingCapturesAuto(
-        (sent, total) => {
-          setSendProgress({ sent, total });
-        },
-        undefined,
-        async (payload) => {
-          await ch.publish(EVENT_ANALYSIS, payload);
-        },
-        (captureId, error) => {
-          console.error(`[OFFLINE-AUTO-SYNC] Error processing ${captureId}: ${error}`);
-        }
-      );
-
-      // Refresh pending count
-      const remainingCount = await getPendingCount();
-      setPendingCaptureCount(remainingCount);
-
-      if (result.successCount > 0) {
-        console.log(`[OFFLINE-AUTO-SYNC] Success: ${result.successCount}/${result.totalCount}`);
-      }
-
-      setTimeout(() => {
-        setIsSendingPending(false);
-        setSendProgress(null);
-      }, 1000);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("[OFFLINE-AUTO-SYNC] Error:", msg);
-      setIsSendingPending(false);
-      setSendProgress(null);
-    }
-  }, [isSendingPending]);
-
-  // ── Send pending offline captures (manual button) ──────────────────────
+  // ── Send pending offline captures (manual button or automatic on online) ──────
   const handleSendPendingCaptures = useCallback(async () => {
     // Check if internet is available
     if (!isOnline) {
@@ -624,6 +574,11 @@ export default function DronePage() {
       }, 3000);
     }
   }, [isOnline]);
+
+  // ── Update the sendPendingRef so it can be called from the online event ──
+  useEffect(() => {
+    sendPendingRef.current = handleSendPendingCaptures;
+  }, [handleSendPendingCaptures]);
 
   return (
     <div className="min-h-screen bg-[#060b14] flex flex-col">

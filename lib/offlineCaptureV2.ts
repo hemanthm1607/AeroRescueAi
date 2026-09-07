@@ -396,114 +396,30 @@ export async function updateCaptureWithAnalysis(
 }
 
 /**
- * Process all pending offline captures and send them when online
- * This is called automatically when the device comes back online
+ * Clear all captures from the database (for testing/debugging).
  */
-export async function processPendingCapturesAuto(
-  onProgress?: (sent: number, total: number) => void,
-  onAnalyzeCapture?: (captureId: string) => Promise<{ imageDataUrl: string; mimeType: string; base64: string }>,
-  onPublishToAbly?: (payload: any) => Promise<void>,
-  onError?: (captureId: string, error: string) => void
-): Promise<{ successCount: number; totalCount: number; failedIds: string[] }> {
-  console.log("[OFFLINE-AUTO-SYNC] Starting automatic sync of pending captures");
-  
-  try {
-    const captures = await getPendingCaptures();
-    const totalCount = captures.length;
-    
-    if (totalCount === 0) {
-      console.log("[OFFLINE-AUTO-SYNC] No pending captures found");
-      return { successCount: 0, totalCount: 0, failedIds: [] };
+export async function clearAllCaptures(): Promise<void> {
+  const db = await initDb();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction([STORE_NAME], "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.clear();
+
+      request.onerror = () => {
+        reject(new Error(`Failed to clear captures: ${request.error?.message}`));
+      };
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      tx.onerror = () => {
+        reject(new Error(`Transaction failed: ${tx.error?.message}`));
+      };
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error("Unknown error during clear"));
     }
-    
-    console.log(`[OFFLINE-AUTO-SYNC] Pending captures found: ${totalCount}`);
-    onProgress?.(0, totalCount);
-    
-    let successCount = 0;
-    const failedIds: string[] = [];
-    
-    // Process each capture one at a time
-    for (let i = 0; i < captures.length; i++) {
-      const capture = captures[i];
-      
-      try {
-        console.log(`[OFFLINE-AUTO-SYNC] Processing capture: ${capture.id}`);
-        
-        // Mark as sending
-        await updateCaptureStatus(capture.id, "sending");
-        
-        // Get image and mime type
-        const { base64, mimeType } = {
-          base64: capture.imageDataUrl.split(",")[1] || capture.imageDataUrl,
-          mimeType: (capture.imageDataUrl.match(/data:([^;]+);/) || [, "image/jpeg"])[1],
-        };
-        
-        // Send to analyze endpoint
-        const res = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            imageBase64: base64,
-            mimeType,
-          }),
-        });
-        
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.error ?? "Analysis failed");
-        }
-        
-        const result = data.result as AnalysisResult;
-        console.log("[OFFLINE-AUTO-SYNC] Analysis complete");
-        
-        // Publish to Ably if callback provided
-        if (onPublishToAbly) {
-          const payload = {
-            result,
-            previewDataUrl: capture.imageDataUrl,
-            capturedAt: capture.capturedAt,
-            latitude: capture.latitude,
-            longitude: capture.longitude,
-          };
-          await onPublishToAbly(payload);
-          console.log("[OFFLINE-AUTO-SYNC] Published to Ably");
-        }
-        
-        // Update capture with analysis result and mark as sent
-        await updateCaptureWithAnalysis(
-          capture.id,
-          result,
-          capture.latitude,
-          capture.longitude
-        );
-        await updateCaptureStatus(capture.id, "sent");
-        console.log("[OFFLINE-AUTO-SYNC] Capture marked sent");
-        
-        successCount++;
-        onProgress?.(successCount, totalCount);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        console.error(`[OFFLINE-AUTO-SYNC] Failed to process ${capture.id}: ${msg}`);
-        failedIds.push(capture.id);
-        
-        // Mark as pending again so it can be retried
-        try {
-          await updateCaptureStatus(capture.id, "pending");
-        } catch (e) {
-          console.error(`[OFFLINE-AUTO-SYNC] Failed to revert status for ${capture.id}`);
-        }
-        
-        onError?.(capture.id, msg);
-      }
-    }
-    
-    console.log(`[OFFLINE-AUTO-SYNC] Complete: ${successCount}/${totalCount} sent`);
-    return { successCount, totalCount, failedIds };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    console.error("[OFFLINE-AUTO-SYNC] Error in auto-sync:", msg);
-    return { successCount: 0, totalCount: 0, failedIds: [] };
-  }
+  });
 }
-
-
