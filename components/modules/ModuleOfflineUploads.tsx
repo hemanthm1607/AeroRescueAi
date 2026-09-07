@@ -21,16 +21,25 @@ export default function ModuleOfflineUploads({
 
   useEffect(() => {
     loadCaptures();
+    
+    // Refresh captures every 2 seconds to show new offline captures in real-time
+    const interval = setInterval(() => {
+      loadCaptures();
+    }, 2000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const loadCaptures = async () => {
     setIsLoading(true);
     setError(null);
     try {
+      console.log("[OFFLINE-8] Offline Uploads loading captures...");
       const data = await getAllCaptures();
+      console.log("[OFFLINE-8] Offline Uploads loaded", data.length, "captures");
       setCaptures(data);
     } catch (err) {
-      console.error("Error loading offline captures:", err);
+      console.error("[OFFLINE-8] Error loading offline captures:", err);
       setError(
         err instanceof Error ? err.message : "Failed to load captures"
       );

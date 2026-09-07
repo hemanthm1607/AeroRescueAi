@@ -44,6 +44,9 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const batteryWatcherRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onCameraStateChangeRef = useRef(onCameraStateChange);
+  const isOnlineRef = useRef(isOnline);
+  const onOfflineCaptureRef = useRef(onOfflineCapture);
+  const onAnalyzeRef = useRef(onAnalyze);
 
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
@@ -63,6 +66,22 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
   useEffect(() => {
     onCameraStateChangeRef.current = onCameraStateChange;
   }, [onCameraStateChange]);
+
+  // Update ref when isOnline changes
+  useEffect(() => {
+    console.log("[OFFLINE-3] isOnline changed to:", isOnline);
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
+
+  // Update ref when onOfflineCapture changes
+  useEffect(() => {
+    onOfflineCaptureRef.current = onOfflineCapture;
+  }, [onOfflineCapture]);
+
+  // Update ref when onAnalyze changes
+  useEffect(() => {
+    onAnalyzeRef.current = onAnalyze;
+  }, [onAnalyze]);
 
   // Notify parent of debug counter changes
   useEffect(() => {
@@ -174,38 +193,38 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
   // Always update the ref to the latest function
   useEffect(() => {
     handleAutomaticCaptureFnRef.current = () => {
-      console.log("[DEBUG-A] AUTO TIMER FIRED - isOnline:", isOnline);
+      console.log("[OFFLINE-1] AUTO TIMER FIRED - isOnline:", isOnlineRef.current);
       setLastAnalysisTime("Just now");
 
       const dataUrl = captureCurrentFrame();
-      console.log("[DEBUG-B] FRAME CAPTURED:", dataUrl ? `${dataUrl.length} bytes` : "NULL");
+      console.log("[OFFLINE-2] FRAME CAPTURED:", dataUrl ? `${dataUrl.length} bytes` : "NULL");
       
       if (!dataUrl) {
-        console.log("[DEBUG-B] Frame capture failed - returning");
+        console.log("[OFFLINE-2] Frame capture failed - returning");
         return;
       }
 
-      if (!isOnline) {
+      if (!isOnlineRef.current) {
         // OFFLINE PATH - save locally
-        console.log("[DEBUG-C] OFFLINE PATH - calling onOfflineCapture");
-        if (onOfflineCapture) {
+        console.log("[OFFLINE-4] onOfflineCapture called");
+        if (onOfflineCaptureRef.current) {
           setDebugOfflineCallback(prev => prev + 1);
           try {
-            onOfflineCapture(dataUrl);
-            console.log("[DEBUG-C] onOfflineCapture callback invoked successfully");
+            onOfflineCaptureRef.current(dataUrl);
+            console.log("[OFFLINE-4] onOfflineCapture callback invoked successfully");
           } catch (error) {
-            console.error("[DEBUG-C] onOfflineCapture threw error:", error);
+            console.error("[OFFLINE-4] onOfflineCapture threw error:", error);
           }
         } else {
-          console.error("[DEBUG-C] onOfflineCapture callback is undefined!");
+          console.error("[OFFLINE-4] onOfflineCapture callback is undefined!");
         }
       } else {
         // ONLINE PATH - existing Gemini flow
-        console.log("[DEBUG] ONLINE PATH - calling onAnalyze");
+        console.log("[OFFLINE] ONLINE PATH - calling onAnalyze");
         const base64 = dataUrlToBase64(dataUrl);
         const mime = getMimeFromDataUrl(dataUrl);
         
-        onAnalyze(
+        onAnalyzeRef.current(
           base64,
           mime,
           dataUrl,
@@ -214,7 +233,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
         );
       }
     };
-  }, [isOnline, onOfflineCapture, onAnalyze, gpsLocation]);
+  }, []);
 
   // Handle the 10-second automatic capture (now just calls the ref)
   function handleAutomaticCapture() {
@@ -294,6 +313,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
             startBatteryMonitoring();
 
             // Capture immediately on startup
+            console.log("[OFFLINE-1] Capturing immediately on startup");
             handleAutomaticCapture();
 
             // Start countdown timer (visual only)
@@ -303,13 +323,13 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
             if (autoLoopIntervalRef.current) {
               clearInterval(autoLoopIntervalRef.current);
             }
-            console.log("[DEBUG] Starting 10-second auto-loop interval");
+            console.log("[OFFLINE-1] Starting 10-second auto-loop interval");
             autoLoopIntervalRef.current = setInterval(() => {
-              console.log("[DEBUG-A] AUTO TIMER FIRED (interval callback)");
+              console.log("[OFFLINE-1] AUTO TIMER FIRED (interval callback)");
               setDebugTimerFired(prev => prev + 1);
               handleAutomaticCapture();
             }, 10_000);
-            console.log("[DEBUG] Auto-loop interval started, ID:", autoLoopIntervalRef.current);
+            console.log("[OFFLINE-1] Auto-loop interval started, ID:", autoLoopIntervalRef.current);
           } else {
             // Video not ready yet, check again soon
             setTimeout(waitForVideoReady, 100);
