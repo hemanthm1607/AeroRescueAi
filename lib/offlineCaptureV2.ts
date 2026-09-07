@@ -73,10 +73,15 @@ function generateCaptureId(): string {
  * Returns the capture ID.
  */
 export async function saveOfflineCapture(imageDataUrl: string): Promise<string> {
+  console.log("[DEBUG-D] saveOfflineCapture called, imageDataUrl length:", imageDataUrl?.length || 0);
+  
   if (!imageDataUrl || imageDataUrl.length < 1000) {
-    throw new Error(`Invalid image data: size = ${imageDataUrl?.length || 0} bytes (minimum 1000 required)`);
+    const errorMsg = `Invalid image data: size = ${imageDataUrl?.length || 0} bytes (minimum 1000 required)`;
+    console.error("[DEBUG-D] Validation failed:", errorMsg);
+    throw new Error(errorMsg);
   }
 
+  console.log("[DEBUG-D] Image validation passed, opening DB...");
   const db = await initDb();
   const id = generateCaptureId();
 
@@ -87,25 +92,39 @@ export async function saveOfflineCapture(imageDataUrl: string): Promise<string> 
     status: "pending",
   };
 
+  console.log("[DEBUG-D] Created capture record, ID:", id);
+
   return new Promise((resolve, reject) => {
     try {
       const tx = db.transaction([STORE_NAME], "readwrite");
+      console.log("[DEBUG-D] Transaction started");
       const store = tx.objectStore(STORE_NAME);
       const request = store.add(capture);
 
       request.onerror = () => {
-        reject(new Error(`Failed to save capture: ${request.error?.message}`));
+        const errorMsg = `Failed to save capture: ${request.error?.message}`;
+        console.error("[DEBUG-D] Request error:", errorMsg);
+        reject(new Error(errorMsg));
       };
 
       request.onsuccess = () => {
+        console.log("[DEBUG-E] Save request successful");
         resolve(id);
       };
 
       tx.onerror = () => {
-        reject(new Error(`Transaction failed: ${tx.error?.message}`));
+        const errorMsg = `Transaction failed: ${tx.error?.message}`;
+        console.error("[DEBUG-D] Transaction error:", errorMsg);
+        reject(new Error(errorMsg));
+      };
+
+      tx.oncomplete = () => {
+        console.log("[DEBUG-E] Transaction complete");
       };
     } catch (err) {
-      reject(err instanceof Error ? err : new Error("Unknown error during save"));
+      const errorMsg = err instanceof Error ? err.message : "Unknown error during save";
+      console.error("[DEBUG-D] Exception:", errorMsg);
+      reject(err instanceof Error ? err : new Error(errorMsg));
     }
   });
 }
@@ -151,10 +170,13 @@ export async function getPendingCaptures(): Promise<OfflineCaptureV2[]> {
  */
 export async function getPendingCount(): Promise<number> {
   try {
+    console.log("[DEBUG-F] getPendingCount called");
     const captures = await getPendingCaptures();
-    return captures.length;
+    const count = captures.length;
+    console.log("[DEBUG-F] getPendingCount result:", count);
+    return count;
   } catch (err) {
-    console.error("Error getting pending count:", err);
+    console.error("[DEBUG-F] getPendingCount error:", err);
     return 0;
   }
 }

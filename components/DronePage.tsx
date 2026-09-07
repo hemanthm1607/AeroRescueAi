@@ -319,12 +319,17 @@ export default function DronePage() {
 
   // ── Handle offline capture (callback from DroneCamera when offline) ────────
   const handleOfflineCapture = useCallback(async (imageDataUrl: string) => {
+    console.log("[DEBUG-C] handleOfflineCapture called with data length:", imageDataUrl?.length || 0);
+    
     try {
       // Save to IndexedDB
+      console.log("[DEBUG-D] INDEXEDDB SAVE START");
       await saveOfflineCapture(imageDataUrl);
+      console.log("[DEBUG-E] INDEXEDDB SAVE SUCCESS");
       
       // Update pending count
       const count = await getPendingCount();
+      console.log("[DEBUG-F] PENDING COUNT =", count);
       setPendingCaptureCount(count);
       
       // Show feedback
@@ -334,7 +339,7 @@ export default function DronePage() {
       }, 2000);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      console.error("Failed to save offline capture:", errorMsg);
+      console.error("[DEBUG-E] INDEXEDDB SAVE FAILED:", errorMsg);
       setStatusMessage("Failed to save capture locally");
       setTimeout(() => {
         setStatusMessage("");
@@ -571,6 +576,19 @@ export default function DronePage() {
           lastSentAt={lastSentAt}
           message={statusMessage}
         />
+
+        {/* DEBUG PANEL - TEMPORARY */}
+        <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
+          <p className="text-xs font-mono text-slate-400 mb-2">
+            <span className="text-blue-300">Offline pipeline:</span>
+          </p>
+          <p className="text-xs font-mono text-slate-400 mb-2">
+            A: {isOnline ? "⏸" : "🔴"} | B: {isOnline ? "⏸" : "?"} | C: {pendingCaptureCount > 0 ? "✓" : "?"} | D: {pendingCaptureCount > 0 ? "✓" : "?"} | E: {pendingCaptureCount > 0 ? "✓" : "?"}
+          </p>
+          <p className="text-xs font-mono text-orange-300">
+            Pending: {pendingCaptureCount}
+          </p>
+        </div>
 
         {/* Offline captures section */}
         {pendingCaptureCount > 0 && (

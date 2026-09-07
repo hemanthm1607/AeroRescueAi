@@ -109,14 +109,18 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
   // Capture the current video frame - returns data URL or null on failure
   function captureCurrentFrame(): string | null {
     if (!videoRef.current || !canvasRef.current) {
+      console.log("[DEBUG-B] videoRef or canvasRef is null");
       return null;
     }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
+    console.log(`[DEBUG-B] video.readyState=${video.readyState}, videoWidth=${video.videoWidth}, videoHeight=${video.videoHeight}`);
+
     // Verify video is ready
     if (video.readyState < 2) {
+      console.log("[DEBUG-B] Video not ready (readyState < 2)");
       return null;
     }
 
@@ -124,6 +128,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
     const videoHeight = video.videoHeight || 0;
 
     if (videoWidth === 0 || videoHeight === 0) {
+      console.log("[DEBUG-B] Video dimensions are zero");
       return null;
     }
 
@@ -132,6 +137,7 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
 
     const ctx = canvas.getContext("2d");
     if (!ctx) {
+      console.log("[DEBUG-B] Canvas context is null");
       return null;
     }
 
@@ -139,28 +145,43 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
     const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
 
     if (!dataUrl || dataUrl.length < 1000) {
+      console.log(`[DEBUG-B] dataUrl invalid: length=${dataUrl?.length || 0}`);
       return null;
     }
 
+    console.log(`[DEBUG-B] Frame captured: ${dataUrl.length} bytes`);
     return dataUrl;
   }
 
   // Handle the 10-second automatic capture
   function handleAutomaticCapture() {
+    console.log("[DEBUG-A] AUTO TIMER FIRED - isOnline:", isOnline);
     setLastAnalysisTime("Just now");
 
     const dataUrl = captureCurrentFrame();
+    console.log("[DEBUG-B] FRAME CAPTURED:", dataUrl ? `${dataUrl.length} bytes` : "NULL");
+    
     if (!dataUrl) {
+      console.log("[DEBUG-B] Frame capture failed - returning");
       return;
     }
 
     if (!isOnline) {
       // OFFLINE PATH - save locally
+      console.log("[DEBUG-C] OFFLINE PATH - calling onOfflineCapture");
       if (onOfflineCapture) {
-        onOfflineCapture(dataUrl);
+        try {
+          onOfflineCapture(dataUrl);
+          console.log("[DEBUG-C] onOfflineCapture callback invoked successfully");
+        } catch (error) {
+          console.error("[DEBUG-C] onOfflineCapture threw error:", error);
+        }
+      } else {
+        console.error("[DEBUG-C] onOfflineCapture callback is undefined!");
       }
     } else {
       // ONLINE PATH - existing Gemini flow
+      console.log("[DEBUG] ONLINE PATH - calling onAnalyze");
       const base64 = dataUrlToBase64(dataUrl);
       const mime = getMimeFromDataUrl(dataUrl);
       
@@ -256,9 +277,12 @@ export default function DroneCamera({ onAnalyze, isAnalyzing, onCameraStateChang
             if (autoLoopIntervalRef.current) {
               clearInterval(autoLoopIntervalRef.current);
             }
+            console.log("[DEBUG] Starting 10-second auto-loop interval");
             autoLoopIntervalRef.current = setInterval(() => {
+              console.log("[DEBUG-A] AUTO TIMER FIRED (interval callback)");
               handleAutomaticCapture();
             }, 10_000);
+            console.log("[DEBUG] Auto-loop interval started, ID:", autoLoopIntervalRef.current);
           } else {
             // Video not ready yet, check again soon
             setTimeout(waitForVideoReady, 100);
