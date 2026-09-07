@@ -4,13 +4,12 @@
  */
 
 export interface OfflineCapture {
-  id: string; // unique capture ID
-  imageBase64: string;
-  mimeType: string;
+  id: string;
+  imageDataUrl: string; // Store complete data URL including header
   capturedAt: string; // ISO timestamp
   latitude: number | null;
   longitude: number | null;
-  status: "pending" | "sent";
+  status: "pending";
 }
 
 const DB_NAME = "AeroRescueAiOffline";
@@ -51,88 +50,103 @@ function validateImageBase64(base64: string, mimeType: string): { valid: boolean
 async function initDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (dbInstance) {
+      console.log("[IDB] Reusing existing database connection");
       resolve(dbInstance);
       return;
     }
 
+    console.log("[IDB] Opening database...");
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
-      console.error("[OFFLINE] IndexedDB ERROR: DB open failed -", request.error);
+      console.error("[IDB] Database open FAILED:", request.error);
       reject(new Error("Failed to open IndexedDB"));
     };
 
     request.onsuccess = () => {
       dbInstance = request.result;
-      console.log("[OFFLINE] IndexedDB initialized");
+      console.log("[IDB] Database opened successfully");
       resolve(dbInstance);
     };
 
     request.onupgradeneeded = (event) => {
+      console.log("[IDB] Database upgrade needed - creating object store");
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
         store.createIndex("status", "status", { unique: false });
-        console.log("[OFFLINE] IndexedDB object store created");
+        console.log("[IDB] Object store created successfully");
       }
     };
   });
 }
 
 /**
- * Save a captured frame to IndexedDB with offline status.
- * Returns the capture ID on success, throws on failure.
+ * Save a captured frame to IndexedDB.
  */
 export async function saveOfflineCapture(
-  imageBase64: string,
-  mimeType: string,
+  imageDataUrl: string,
+  capturedAt: string,
   latitude: number | null,
   longitude: number | null
 ): Promise<string> {
-  // Validate image data before saving
-  const validation = validateImageBase64(imageBase64, mimeType);
-  if (!validation.valid) {
-    const reason = validation.reason || "unknown";
-    console.error("[OFFLINE] IndexedDB ERROR: Invalid image data -", reason);
-    throw new Error(`Invalid image data: ${reason}`);
+  console.log("[IDB] saveOfflineCapture called");
+  console.log(`[IDB] imageDataUrl length = ${imageDataUrl?.length || 0}`);
+  console.log(`[IDB] capturedAt = ${capturedAt}`);
+  console.log(`[IDB] latitude = ${latitude}`);
+  console.log(`[IDB] longitude = ${longitude}`);
+
+  // Validate image data
+  if (!imageDataUrl || imageDataUrl.length < 1000) {
+    const error = `Invalid image data: length = ${imageDataUrl?.length || 0}`;
+    console.error(`[IDB] ${error}`);
+    throw new Error(error);
   }
 
-  console.log(`[OFFLINE] Saving capture to IndexedDB (${imageBase64.length} bytes, ${mimeType})`);
-
+  console.log("[IDB] Opening database for save...");
   const db = await initDb();
+  
   const id = `capture-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const capture: OfflineCapture = {
     id,
-    imageBase64,
-    mimeType,
-    capturedAt: new Date().toISOString(),
+    imageDataUrl,
+    capturedAt,
     latitude,
     longitude,
     status: "pending",
   };
 
+  console.log(`[IDB] Creating capture record with id: ${id}`);
+  console.log(`[IDB] Starting transaction...`);
+
   return new Promise((resolve, reject) => {
     try {
       const tx = db.transaction([STORE_NAME], "readwrite");
       const store = tx.objectStore(STORE_NAME);
+      
+      console.log("[IDB] Adding capture to store...");
       const request = store.add(capture);
 
       request.onerror = () => {
-        console.error("[OFFLINE] IndexedDB ERROR: Save failed -", request.error);
-        reject(new Error("Failed to save capture to IndexedDB"));
+        console.error("[IDB] Save FAILED:", request.error);
+        reject(new Error(`Failed to save capture: ${request.error?.message || "unknown"}`));
       };
 
       request.onsuccess = () => {
-        console.log(`[OFFLINE] Capture saved successfully: ${id}`);
+        console.log(`[IDB] Save successful: ${id}`);
         resolve(id);
       };
 
+      tx.oncomplete = () => {
+        console.log(`[IDB] Transaction completed for ${id}`);
+      };
+
       tx.onerror = () => {
-        console.error("[OFFLINE] IndexedDB ERROR: Transaction failed -", tx.error);
-        reject(new Error("Transaction failed"));
+        console.error("[IDB] Transaction FAILED:", tx.error);
+        reject(new Error(`Transaction failed: ${tx.error?.message || "unknown"}`));
       };
     } catch (err) {
-      console.error("[OFFLINE] IndexedDB ERROR: Unexpected error -", err);
+      console.error("[IDB] Unexpected error:", err);
       reject(err instanceof Error ? err : new Error("Unknown error"));
     }
   });
@@ -142,7 +156,7 @@ export async function saveOfflineCapture(
  * Get all pending captures from IndexedDB.
  */
 export async function getPendingCaptures(): Promise<OfflineCapture[]> {
-  console.log("[OFFLINE] Reading pending captures from IndexedDB");
+  console.log("[IDB] getPendingCaptures called");
 
   try {
     const db = await initDb();
@@ -154,78 +168,47 @@ export async function getPendingCaptures(): Promise<OfflineCapture[]> {
       const request = index.getAll("pending");
 
       request.onerror = () => {
-        console.error("[OFFLINE] IndexedDB ERROR: Get pending failed -", request.error);
+        console.error("[IDB] Get pending FAILED:", request.error);
         reject(new Error("Failed to get pending captures"));
       };
 
       request.onsuccess = () => {
         const result = request.result as OfflineCapture[];
-        console.log(`[OFFLINE] Found ${result.length} pending captures`);
+        console.log(`[IDB] Found ${result.length} pending captures`);
         resolve(result);
       };
 
       tx.onerror = () => {
-        console.error("[OFFLINE] IndexedDB ERROR: Transaction failed -", tx.error);
+        console.error("[IDB] Transaction FAILED:", tx.error);
         reject(new Error("Transaction failed"));
       };
     });
   } catch (err) {
-    console.error("[OFFLINE] IndexedDB ERROR: Failed to read pending captures -", err);
+    console.error("[IDB] Failed to read pending captures:", err);
     return [];
   }
 }
 
 /**
- * Mark a capture as sent.
+ * Get count of pending captures.
  */
-export async function markCaptureSent(captureId: string): Promise<void> {
-  console.log(`[OFFLINE] Marking capture as sent: ${captureId}`);
-
-  const db = await initDb();
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_NAME], "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.get(captureId);
-
-    request.onerror = () => {
-      console.error("[OFFLINE] IndexedDB ERROR: Mark sent failed -", request.error);
-      reject(new Error("Failed to mark capture as sent"));
-    };
-
-    request.onsuccess = () => {
-      const capture = request.result as OfflineCapture;
-      if (capture) {
-        capture.status = "sent";
-        const updateRequest = store.put(capture);
-
-        updateRequest.onerror = () => {
-          console.error("[OFFLINE] IndexedDB ERROR: Update failed -", updateRequest.error);
-          reject(new Error("Failed to update capture status"));
-        };
-
-        updateRequest.onsuccess = () => {
-          console.log(`[OFFLINE] Capture marked as sent: ${captureId}`);
-          resolve();
-        };
-      } else {
-        console.error(`[OFFLINE] IndexedDB ERROR: Capture not found: ${captureId}`);
-        reject(new Error("Capture not found"));
-      }
-    };
-
-    tx.onerror = () => {
-      console.error("[OFFLINE] IndexedDB ERROR: Transaction failed -", tx.error);
-      reject(new Error("Transaction failed"));
-    };
-  });
+export async function getPendingCaptureCount(): Promise<number> {
+  try {
+    const captures = await getPendingCaptures();
+    const count = captures.length;
+    console.log(`[IDB] Pending count: ${count}`);
+    return count;
+  } catch (err) {
+    console.error("[IDB] Failed to get pending count:", err);
+    return 0;
+  }
 }
 
 /**
- * Delete a capture from IndexedDB (after successful send and cleanup).
+ * Delete a capture from IndexedDB.
  */
 export async function deleteCapture(captureId: string): Promise<void> {
-  console.log(`[OFFLINE] Deleting capture: ${captureId}`);
+  console.log(`[IDB] Deleting capture: ${captureId}`);
 
   const db = await initDb();
 
@@ -235,61 +218,17 @@ export async function deleteCapture(captureId: string): Promise<void> {
     const request = store.delete(captureId);
 
     request.onerror = () => {
-      console.error("[OFFLINE] IndexedDB ERROR: Delete failed -", request.error);
+      console.error("[IDB] Delete FAILED:", request.error);
       reject(new Error("Failed to delete capture"));
     };
 
     request.onsuccess = () => {
-      console.log(`[OFFLINE] Capture deleted: ${captureId}`);
+      console.log(`[IDB] Deleted: ${captureId}`);
       resolve();
     };
 
     tx.onerror = () => {
-      console.error("[OFFLINE] IndexedDB ERROR: Transaction failed -", tx.error);
-      reject(new Error("Transaction failed"));
-    };
-  });
-}
-
-/**
- * Get count of pending captures.
- */
-export async function getPendingCaptureCount(): Promise<number> {
-  try {
-    const captures = await getPendingCaptures();
-    console.log(`[OFFLINE] Pending count: ${captures.length}`);
-    return captures.length;
-  } catch (err) {
-    console.error("[OFFLINE] Failed to get pending count:", err);
-    return 0;
-  }
-}
-
-/**
- * Clear all captures from IndexedDB (for testing/reset).
- */
-export async function clearAllCaptures(): Promise<void> {
-  console.log("[OFFLINE] Clearing all captures");
-
-  const db = await initDb();
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction([STORE_NAME], "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.clear();
-
-    request.onerror = () => {
-      console.error("[OFFLINE] IndexedDB ERROR: Clear failed -", request.error);
-      reject(new Error("Failed to clear captures"));
-    };
-
-    request.onsuccess = () => {
-      console.log("[OFFLINE] All captures cleared");
-      resolve();
-    };
-
-    tx.onerror = () => {
-      console.error("[OFFLINE] IndexedDB ERROR: Transaction failed -", tx.error);
+      console.error("[IDB] Transaction FAILED:", tx.error);
       reject(new Error("Transaction failed"));
     };
   });

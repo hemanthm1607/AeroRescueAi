@@ -20,7 +20,6 @@ import { getLocationName } from "@/lib/geo";
 import {
   saveOfflineCapture,
   getPendingCaptures,
-  markCaptureSent,
   deleteCapture,
   getPendingCaptureCount,
 } from "@/lib/offlineCaptures";
@@ -136,6 +135,15 @@ export default function DronePage() {
   const cameraActiveRef = useRef(false);
   const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentGpsRef = useRef<{ latitude: number; longitude: number } | null>(null);
+
+  // ── Load pending count on mount ──────────────────────────────────────────────
+  useEffect(() => {
+    console.log("[OFFLINE-DIRECT] Component mounted - loading pending count");
+    getPendingCaptureCount().then(count => {
+      console.log(`[OFFLINE-DIRECT] Initial pending count: ${count}`);
+      setPendingCaptureCount(count);
+    });
+  }, []);
 
   // ── Connect to Ably on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -315,7 +323,50 @@ export default function DronePage() {
     };
   }, []);
 
-  // ── Handle camera capture — analyze + publish ────────────────────────────
+  // ── Handle offline capture (direct callback from DroneCamera) ────────────────
+  const handleOfflineCapture = useCallback(async (imageDataUrl: string) => {
+    console.log("[OFFLINE-DIRECT] ===Received frame from DroneCamera===");
+    console.log(`[OFFLINE-DIRECT] Image length = ${imageDataUrl?.length || 0}`);
+
+    if (!imageDataUrl || imageDataUrl.length < 1000) {
+      console.error("[OFFLINE-DIRECT] Invalid image data - too small");
+      return;
+    }
+
+    console.log("[OFFLINE-DIRECT] Saving frame to IndexedDB...");
+    
+    try {
+      const captureId = await saveOfflineCapture(
+        imageDataUrl,
+        new Date().toISOString(),
+        currentGpsRef.current?.latitude ?? null,
+        currentGpsRef.current?.longitude ?? null
+      );
+      
+      console.log(`[OFFLINE-DIRECT] Saved: ${captureId}`);
+      
+      // Immediately update pending count
+      console.log("[OFFLINE-DIRECT] Fetching new pending count...");
+      const count = await getPendingCaptureCount();
+      console.log(`[OFFLINE-DIRECT] Pending count: ${count}`);
+      setPendingCaptureCount(count);
+      
+      setStatusMessage(`${count} capture${count !== 1 ? "s" : ""} stored locally`);
+      setTimeout(() => {
+        setStatusMessage("");
+      }, 3000);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      console.error(`[OFFLINE-DIRECT] Save FAILED: ${errorMsg}`);
+      console.error("[OFFLINE-DIRECT] Error details:", err);
+      setStatusMessage("Failed to store capture locally");
+      setTimeout(() => {
+        setStatusMessage("");
+      }, 3000);
+    }
+  }, []);
+
+  // ── Handle online camera capture — analyze + publish ─────────────────────────
   const handleDroneAnalyze = useCallback(async (
     base64: string,
     mimeType: string,
@@ -323,43 +374,7 @@ export default function DronePage() {
     latitude?: number,
     longitude?: number,
   ) => {
-    console.log(`[DronePage] Camera frame captured: ${base64.length} bytes, ${mimeType}`);
-    console.log(`[DronePage] Frame size: ${base64.length} bytes, network status: ${isOnline ? "online" : "offline"}`);
-    
-    // If offline, save locally to IndexedDB
-    if (!isOnline) {
-      console.log("[DronePage] OFFLINE: Camera frame captured - storing locally");
-      console.log(`[DronePage] GPS location: ${latitude ? latitude.toFixed(6) : "null"}, ${longitude ? longitude.toFixed(6) : "null"}`);
-      
-      try {
-        console.log("[DronePage] Attempting to save to IndexedDB...");
-        const captureId = await saveOfflineCapture(base64, mimeType, latitude ?? null, longitude ?? null);
-        console.log(`[DronePage] OFFLINE: Capture saved successfully: ${captureId}`);
-        
-        // Immediately update pending count
-        const count = await getPendingCaptureCount();
-        console.log(`[DronePage] Pending capture count: ${count}`);
-        setPendingCaptureCount(count);
-        
-        setStatusMessage(`${count} capture${count !== 1 ? "s" : ""} stored locally`);
-        setTimeout(() => {
-          setStatusMessage("");
-        }, 3000);
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        console.error("[DronePage] OFFLINE: Failed to save offline capture:", errorMsg);
-        console.error("[DronePage] Base64 length:", base64.length);
-        console.error("[DronePage] MIME type:", mimeType);
-        setStatusMessage("Failed to store capture locally");
-        setTimeout(() => {
-          setStatusMessage("");
-        }, 3000);
-      }
-      return;
-    }
-
-    setConnStatus("analyzing");
-    setStatusMessage("Sending to AI…");
+    console.log(`[DronePage] Online analysis started`);
 
     // Step 1: run AI analysis
     let result: AnalysisResult;
@@ -475,12 +490,18 @@ export default function DronePage() {
         try {
           // Step 1: Analyze with Gemini
           console.log(`[SEND] Sending capture ${i + 1} to Gemini API...`);
+          
+          // Extract base64 from data URL
+          const base64 = capture.imageDataUrl.split(',')[1] || capture.imageDataUrl;
+          const mimeMatch = capture.imageDataUrl.match(/data:([^;]+);/);
+          const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+          
           const res = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              imageBase64: capture.imageBase64,
-              mimeType: capture.mimeType,
+              imageBase64: base64,
+              mimeType,
             }),
           });
 
@@ -493,7 +514,7 @@ export default function DronePage() {
           const result: AnalysisResult = data.result;
 
           // Step 2: Resize preview
-          let smallPreview = capture.imageBase64;
+          let smallPreview = capture.imageDataUrl;
           try {
             const img = new Image();
             await new Promise<void>((resolve) => {
@@ -510,7 +531,7 @@ export default function DronePage() {
                 resolve();
               };
               img.onerror = () => resolve();
-              img.src = capture.imageBase64;
+              img.src = capture.imageDataUrl;
             });
           } catch {
             // Use full preview if resize fails
@@ -629,7 +650,7 @@ export default function DronePage() {
         )}
 
         {/* Pending Captures Indicator (when online but has pending) */}
-        {isOnline && pendingCaptureCount > 0 && (
+        {pendingCaptureCount > 0 && (
           <PendingCapturesIndicator
             pendingCount={pendingCaptureCount}
             onSendClick={handleSendPendingCaptures}
@@ -654,6 +675,7 @@ export default function DronePage() {
               isAnalyzing={connStatus === "analyzing" || connStatus === "publishing"}
               onCameraStateChange={handleCameraStateChange}
               isOnline={isOnline}
+              onOfflineCapture={handleOfflineCapture}
             />
           </div>
         </div>
