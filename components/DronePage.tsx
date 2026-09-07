@@ -23,6 +23,7 @@ import {
   getPendingCount,
   updateCaptureStatus,
   updateCaptureWithAnalysis,
+  processPendingCapturesAuto,
   type OfflineCaptureV2,
 } from "@/lib/offlineCaptureV2";
 
@@ -150,16 +151,18 @@ export default function DronePage() {
 
   // ── Monitor online/offline status ──────────────────────────────────────────
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = async () => {
+      console.log("[OFFLINE-AUTO-SYNC] Online detected");
       setIsOnline(true);
+      
       // When coming online, refresh pending count
-      getPendingCount()
-        .then((count) => {
-          setPendingCaptureCount(count);
-        })
-        .catch((err) => {
-          console.error("Failed to refresh pending count on online:", err);
-        });
+      const count = await getPendingCount();
+      setPendingCaptureCount(count);
+      
+      // If there are pending captures, automatically start syncing
+      if (count > 0) {
+        await handleAutoSyncPendingCaptures();
+      }
     };
 
     const handleOffline = () => {
@@ -431,6 +434,57 @@ export default function DronePage() {
     cameraActiveRef.current = isActive;
     console.log(`[DronePage] Camera state changed: ${isActive ? "active" : "inactive"}`);
   }, []);
+
+  // ── Auto-sync pending captures when coming online ──────────────────────────
+  const handleAutoSyncPendingCaptures = useCallback(async () => {
+    if (isSendingPending) {
+      console.log("[OFFLINE-AUTO-SYNC] Sync already in progress, skipping");
+      return;
+    }
+
+    setIsSendingPending(true);
+    setSendProgress({ sent: 0, total: 0 });
+
+    try {
+      const ch = channelRef.current;
+      if (!ch) {
+        console.warn("[OFFLINE-AUTO-SYNC] Not connected to Ably, will retry next time");
+        setIsSendingPending(false);
+        return;
+      }
+
+      const result = await processPendingCapturesAuto(
+        (sent, total) => {
+          setSendProgress({ sent, total });
+        },
+        undefined,
+        async (payload) => {
+          await ch.publish(EVENT_ANALYSIS, payload);
+        },
+        (captureId, error) => {
+          console.error(`[OFFLINE-AUTO-SYNC] Error processing ${captureId}: ${error}`);
+        }
+      );
+
+      // Refresh pending count
+      const remainingCount = await getPendingCount();
+      setPendingCaptureCount(remainingCount);
+
+      if (result.successCount > 0) {
+        console.log(`[OFFLINE-AUTO-SYNC] Success: ${result.successCount}/${result.totalCount}`);
+      }
+
+      setTimeout(() => {
+        setIsSendingPending(false);
+        setSendProgress(null);
+      }, 1000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.error("[OFFLINE-AUTO-SYNC] Error:", msg);
+      setIsSendingPending(false);
+      setSendProgress(null);
+    }
+  }, [isSendingPending]);
 
   // ── Send pending offline captures (manual button) ──────────────────────
   const handleSendPendingCaptures = useCallback(async () => {
